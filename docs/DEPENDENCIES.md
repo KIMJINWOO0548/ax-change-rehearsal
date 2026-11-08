@@ -65,3 +65,8 @@ On **2026-11-08 UTC**, queries to `https://api.osv.dev/v1/query` for each exact 
 - https://google.github.io/osv.dev/api/#tag/api/operation/OSV_QueryAffected
 
 The vendor records a PKCS#7 issue fixed in 50.0.0 (CVE-2026-69247); the selected pin is newer. The 50.0.2 changelog records updated bundled OpenSSL wheels. These checks are a dated snapshot, **not a guarantee of safety, a comprehensive native-component audit, FIPS validation, or enterprise certification**. Recheck advisories and bundled OpenSSL before deployment and regularly afterward. Refresh pins and official hashes deliberately, repeat native matrix tests, and review license notices whenever dependencies change. Do not automatically float production versions.
+
+
+### Reproducible CI runner scope (2026-11-08)
+
+The current CI matrix explicitly uses `ubuntu-24.04` and `windows-latest`, with all four CPython versions 3.10, 3.11, 3.12 and 3.13 on each runner (eight jobs). No test was removed, disabled or newly skipped for this runner selection. During release verification, the moving `ubuntu-latest` label selected Ubuntu 26.04.1; its official Python 3.10.22 download returned HTTP 504 through the setup action retries and one failed-job rerun, before application tests could execute. The official same-release Ubuntu 24.04 x64 asset was confirmed present. Linux CI is pinned to Ubuntu 24.04 for a reproducible test target; this is an infrastructure/environment selection, not an application defect fix or a claim of Ubuntu 26.04 support. Exact-commit CI results remain the release gate.

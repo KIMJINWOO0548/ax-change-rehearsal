@@ -6,16 +6,16 @@ Vanilla semantic HTML, external local CSS/JS only. No package install, web fonts
 
 ## Design system
 
-Private image-generated concept reviewed before implementation: navy fixed left navigation, cool light-gray canvas, white document surfaces, restrained teal action, side-by-side line-numbered policy comparison, independent FAQ/API radio controls, results as a true table with an inline evidence inspector. Tokens: navy #111e38, teal #00877d, canvas #f2f5f9, text #15233b, border #dce3ec, 8px section radius. System sans fonts, 32px title, 20px section titles, 12–14px body and control text. No product imagery required.
+Navy fixed left navigation, cool light-gray canvas, white document surfaces, restrained teal action, side-by-side line-numbered policy comparison, independent FAQ/API radio controls, and a true results table with an inline evidence inspector. Tokens: navy #111e38, teal #00877d, canvas #f2f5f9, text #15233b, border #dce3ec, 8px section radius. System sans fonts, 32px title, 20px section titles, 12-14px body and control text. No product imagery or remote fonts.
 
-The concept's invented privacy-retention paragraph is intentionally replaced by actual registered returns-policy text. The concept's initially selected corrected settings are intentionally replaced by backend defaults (stale/stale). Icons in the concept's navigation are replaced by useful step numbers instead of importing an icon library. Additional required workflow controls are JSON download, verdict filtering, sources/hash disclosure, limitations and actual-state evidence details. These are functional additions, not marketing content.
+Policy panels use the registered synthetic returns-policy text. Initial settings follow backend defaults (stale/stale). Numbered navigation identifies the three work steps. JSON download, verdict filtering, sources/hash disclosure, limitations and actual-state evidence are functional workflow controls.
 
 ## Executed checks (2026-11-08)
 
-- Windows, Python 3.12.10: 59 Python tests passed, including actual CRLF policy-file regression coverage; package validator, full demo, static workbench, and compileall passed.
+- Windows, Python 3.12.10: 60 Python tests passed, including actual CRLF policy-file regression coverage; package validator, full demo, static workbench, and compileall passed.
 - Node 24.22.1: syntax check and all 4 dependency-free DOM contract tests passed.
 - Installed Chrome with an ephemeral Playwright profile and the actual loopback HTTP server: all browser assertions passed. Covered initial state, stale/stale, FAQ-only correction, both corrected, keyboard detail opening, filtering, invalidation, JSON export, server failure and retry, duplicate submission, policy-review blocking, and no page errors.
-- Desktop viewport 1488 x 1058 and mobile viewport 390 x 844 screenshots were opened and visually inspected. Korean text, policy comparison, controls, results, evidence and raw-state blocks were readable. Navy navigation, teal action controls, cool-gray canvas and white document surfaces match the documented design system. This is not a pixel-perfect comparison to the private concept or a comprehensive accessibility audit.
+- Desktop viewport 1488 x 1058 and mobile viewport 390 x 844 screenshots were opened and visually inspected. Korean text, policy comparison, controls, results, evidence and raw-state blocks were readable. Navy navigation, teal action controls, cool-gray canvas and white document surfaces match the documented design system. This is a visual usability check, not a comprehensive accessibility audit.
 - Narrow results tables now retain horizontal scrolling, with a focusable labeled region and visible keyboard/scroll guidance. The detail button stays on one line with an 88px minimum width. A new regression first failed against the old CSS, then passed after the fix: width >=84px, height <=46px, and full button visibility within the scroll container after scrolling. Mobile screenshots were inspected at the detail-column scroll position.
 
 ## Issues found and corrected
@@ -23,6 +23,8 @@ The concept's invented privacy-retention paragraph is intentionally replaced by 
 Windows checkout line endings initially invalidated reviewed policy hashes and blocked normal runs. Policy hashing now declares UTF-8/LF canonicalization, normalizing CRLF and CR only; other text changes still invalidate review. The Windows regression and the existing changed-policy guard both pass.
 
 At 390px, detail buttons initially wrapped Korean text one character per line. Non-wrapping buttons and a 520px table minimum width fix this without creating page-level horizontal overflow. The table remains independently scrollable.
+
+Windows CI also exposed a legacy cp1252 console failure when printing Korean stage titles. A subprocess regression reproduced the failure before the fix. The CLI now preserves the console encoding but escapes unsupported console characters; generated HTML and JSON remain lossless UTF-8. CI does not mask this with a UTF-8 environment override.
 
 ## Reproduction and limits
 

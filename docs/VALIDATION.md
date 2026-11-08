@@ -75,7 +75,7 @@ python run_workbench.py
 
 FAQ/API 3단계 보고서는 실제 모의 실행 결과에서 만든다. 설정 검토 hash가 달라지면 FAQ 결과는 미확인으로 남는다. 설정 hash는 신원·권한 확인 수단이 아니다.
 
-Windows Python 3.12.10에서 59개 Python 테스트와 4개 DOM 테스트, validator, demo, workbench, compileall을 통과했다. 실제 Chrome에서 1488px/390px 화면과 기능 흐름을 검증하고 스크린샷을 직접 확인했다. Windows 줄바꿈 해시와 모바일 상세 버튼 회귀를 수정했다. 자세한 결과와 한계는 `docs/design/frontend-qa.md`에 있다. GitHub Actions는 Ubuntu/Windows와 Python 3.10~3.13의 8개 조합이며, 정확한 commit별 결과는 실행 기록을 확인한다.
+Windows Python 3.12.10에서 60개 Python 테스트와 4개 DOM 테스트, validator, demo, workbench, compileall을 통과했다. 실제 Chrome에서 1488px/390px 화면과 기능 흐름을 검증하고 스크린샷을 직접 확인했다. Windows 줄바꿈 해시와 모바일 상세 버튼 회귀를 수정했다. 자세한 결과와 한계는 `docs/design/frontend-qa.md`에 있다. GitHub Actions는 Ubuntu/Windows와 Python 3.10~3.13의 8개 조합이며, 정확한 commit별 결과는 실행 기록을 확인한다.
 
 ## 0.3.0 로컬 작업대
 

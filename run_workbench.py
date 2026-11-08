@@ -2,6 +2,7 @@
 """Generate a local synthetic workbench; no HTTP server or external writes."""
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from rehearsal.report import render_html
@@ -9,6 +10,10 @@ from rehearsal.workbench import build_workbench, load_faq
 
 
 def main():
+    # Preserve the console encoding, escaping unsupported characters in summaries.
+    # Generated HTML and JSON remain lossless UTF-8.
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(errors='backslashreplace')
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=Path('results/workbench'))
     parser.add_argument('--stale-faq', type=Path)

@@ -112,3 +112,15 @@ Node는 애플리케이션 실행 의존성이 아니라 프런트엔드 개발 
 ### 0.5.0 Windows final validation
 
 Windows Python 3.12.10 ran 111 tests: 109 passed and 2 skipped (POSIX permissions and unavailable Windows symlink privilege). Hardlink rejection and corrupt-database connection cleanup were tested. Node 24.22.1 passed all 29 frontend tests. Actual installed Chrome passed the legacy workbench suite and 10 archive browser check groups, including restart persistence, review conflicts and uncertain-response recovery. Desktop/mobile screenshots were opened and inspected. Details and explicit scope limits are recorded in `docs/design/frontend-qa.md`.
+
+
+## 0.6.0 백업·복원
+
+클라우드 Python 3.12에서 전체138개 테스트, 프런트엔드29개 테스트, 합성팩3개/36사례 검증을 통과했다. 새 복구시험은 동일 report/review 복원, 원본/backup byte 보존, 읽기 전용 검사, 동시쓰기와 WAL snapshot, checksum 재계산 후에도 잘못된 schema/trigger 거부, payload/DB 한도, 미완료 표식, 기존·빈 대상 폴더 보존, 경로/권한, connection closure, Python3.10의 setlimit 부재를 다룬다.
+
+새 실제 UI 복구훈련 스크립트는 tests/frontend/recovery-browser.cjs다. 실제 실행 환경과 결과는 docs/design/frontend-qa.md에 따로 기록하며, 스크립트 구문 검사만으로 화면 검증을 주장하지 않는다. 이 단계는 암호화·서명·SSO/RBAC·실제 기업 데이터나 운영 복구 목표의 검증이 아니다.
+
+
+### 0.6.0 Windows final validation
+
+Windows Python 3.12.10 ran 139 tests: 135 passed and 4 skipped (two POSIX permission checks and two unavailable Windows symlink-privilege checks). Recovery and storage hardlink tests passed separately. Node 24.22.1 passed all 29 frontend tests. Installed Chrome passed the complete workbench regression, 10 archive check groups and 7 live backup/inspect/new-workspace-restore check groups. Desktop/mobile screenshots were opened and inspected. Validator, demo, offline workbench, syntax, compileall and whitespace checks passed. See `docs/design/frontend-qa.md` for actual coverage and remaining limits. Exact-commit CI remains independently verified across Ubuntu/Windows and Python 3.10-3.13.

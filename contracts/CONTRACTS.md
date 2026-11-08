@@ -237,3 +237,14 @@ manifest는 정규화한 설정·scope·전체 등록 팩의 `registered_pack_sh
 서버는 모든 저장 작업에서 전체 SQLite ledger와 hash 연결/head를 확인하고 트랜잭션으로 저장한다. 손상은 503, 한도는 409, 없는 실행은 404다. 최대100개 실행, 실행당 최대1000개 검토 이벤트이며 자동 삭제 API는 없다. 저장하지 않은 모드는503 STORAGE_DISABLED다. 상세 위협과 한계는 docs/LOCAL_PILOT.md를 따른다.
 
 기록의 hash 일치·REVIEWED 상태·합성 재현 MATCH는 실제 정책 정확성, 검토자의 신원, 불변 감사, 운영 승인 중 어느 것도 뜻하지 않는다.
+
+
+## 로컬 복구 bundle · 0.6.0
+
+`manage_recovery.py`는 HTTP가 아닌 로컬 명령이다. `backup --workspace ... --destination ...`, `inspect --source ...`, `restore --source ... --destination ...`를 지원한다. backup/restore destination은 존재하지 않는 별도 경로여야 한다. 대상 경로를 자동 삭제하거나 덮어쓰지 않는다.
+
+Format 1은 정확히 evidence.sqlite3와 manifest.json 두 파일이다. manifest는 format_version, database_sha256, ledger_head, ledger_count, run_count, created_at, encrypted:false, authenticated:false를 포함한다. 알려지지 않은 field/version, 파일 구성, schema, ledger, checksum은 거부한다. 128 MiB DB, 4 KiB manifest, 1 MiB payload, 100개 run 및 run당1000개 review 한도를 적용한다. 정상 저장에서도 logical page size 한도를 commit 전에 확인한다.
+
+inspect는 read-only/immutable 연결로 검증하며 생성자 기반 초기화나 복구를 하지 않는다. restore는 사본 checksum과 원래 검증된 report/review 구조가 모두 일치해야 완료 표식을 제거한다. 실패 폴더는 미완료 상태로 남고, EvidenceStore는 복구 미완료 또는 backup manifest가 있는 경로를 작업 공간으로 열지 않는다.
+
+이 checksum은 snapshot 복사본을 식별하며 실행 중인 원본 파일의 checksum과 동일하다고 주장하지 않는다. 백업은 평문이고 hash는 인증/서명이 아니다. 데이터와 hash 전체를 다시 작성하는 로컬 소유자의 조작, 외부 시스템 상태, 실행 중단 작업이나 저장 전 결과를 복구/증명하지 않는다.

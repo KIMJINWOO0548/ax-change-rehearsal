@@ -41,6 +41,16 @@ python manage_evidence.py --workspace /absolute/private/location/ax-pilot replay
 
 **이 기록은 암호화·사용자 인증·변경 불가능한 감사 로그가 아닙니다. 검토 표식은 배포 승인이 아닙니다.** 실제 고객·직원 정보나 비밀은 입력하지 마세요. 안전한 실행·백업·실제 기업 파일럿 전 수용 조건은 [LOCAL_PILOT.md](docs/LOCAL_PILOT.md)에 있습니다.
 
+### 검증 가능한 백업·복원
+
+```bash
+python manage_recovery.py backup --workspace /private/ax-pilot --destination /private/ax-backup-001
+python manage_recovery.py inspect --source /private/ax-backup-001
+python manage_recovery.py restore --source /private/ax-backup-001 --destination /private/ax-restored-001
+```
+
+백업과 복원은 새 전용 폴더에만 수행하며 기존 데이터는 덮어쓰지 않습니다. SQLite snapshot, 파일 checksum, schema와 ledger를 확인한 뒤 복원합니다. 백업도 평문이며 인증된 감사나 암호화가 아닙니다. 복원된 기록을 실제 승인으로 바꾸지 않습니다. [복구 훈련과 한계](docs/RECOVERY.md)를 먼저 확인하세요.
+
 이 서버는 로컬 컴퓨터의 합성 검증용입니다. 외부 네트워크에 공개하거나 운영 서버로 사용하지 마세요. 종료는 Ctrl+C입니다. 다른 포트는 `python serve_workbench.py --port 8766`으로 지정할 수 있습니다.
 
 서버 없이 읽는 오프라인 보고서도 지원합니다.
@@ -76,7 +86,7 @@ python run_workbench.py
 
 - `web/`: 정책 비교, 실행 설정, 사례별 근거와 JSON 내려받기를 제공하는 실제 작업 화면.
 - `rehearsal/app.py`, `server.py`: 고정된 정책 검토와 실제 모의 실행을 연결하는 로컬 HTTP API.
-- `rehearsal/storage.py`, `replay.py`: 선택적 로컬 실행/검토 기록, 무결성 검사와 명시적 합성 재현.
+- `rehearsal/storage.py`, `replay.py`, `recovery.py`: 선택적 로컬 실행/검토 기록, 무결성 검사, 명시적 합성 재현과 검증 가능한 백업·복원.
 - `rehearsal/engine.py`: 전후 실행, 재호출 검사, 독립 상태 관찰, 판정.
 - `rehearsal/validation.py`: 구현된 합성 팩의 엄격한 입력 계약 검사.
 - `rehearsal/adapters.py`: 세 업종의 모의 업무 규칙과 10가지 오류 주입.

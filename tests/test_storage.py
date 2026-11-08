@@ -130,3 +130,32 @@ class StorageTests(unittest.TestCase):
             with self.assertRaises(StorageError):
                 self.store.list_runs()
         connection.close.assert_called_once_with()
+
+    def test_untrusted_schema_rejected_before_trigger_can_execute(self):
+        with closing(sqlite3.connect(self.store.path)) as connection, connection:
+            connection.execute('CREATE TRIGGER bad AFTER INSERT ON ledger BEGIN DELETE FROM metadata; END')
+        for action in (lambda: self.store.save(report()), self.store.list_runs, lambda: EvidenceStore(self.path)):
+            with self.assertRaises(StorageError): action()
+        with closing(sqlite3.connect(self.store.path)) as connection:
+            self.assertEqual(connection.execute('SELECT count(*) FROM metadata').fetchone(), (1,))
+
+    def test_report_unknown_fields_and_size_rejected(self):
+        for value in ({**report(), 'custom_adapter': 'https://example.invalid'},
+                      {**report(), 'scope': {'text': 'x' * (1024 * 1024)}}):
+            with self.assertRaises(ValueError): self.store.save(value)
+        self.assertEqual(len(self.store.list_runs()), 1)
+
+    def test_incomplete_restore_cannot_be_opened(self):
+        (self.path / '.recovery-incomplete').write_text('partial')
+        with self.assertRaises(StorageError): EvidenceStore(self.path)
+
+    def test_logical_size_limit_rolls_back_wal_write(self):
+        from unittest.mock import patch
+        with closing(sqlite3.connect(self.store.path)) as connection:
+            connection.execute('PRAGMA journal_mode=WAL')
+            size = connection.execute('PRAGMA page_count').fetchone()[0] * connection.execute('PRAGMA page_size').fetchone()[0]
+            original = len(self.store.list_runs())
+            value = {**report(), 'scope': {'text': 'x' * 40000}}
+            with patch('rehearsal.storage.MAX_DATABASE_BYTES', size):
+                with self.assertRaises(StorageLimit): self.store.save(value)
+            self.assertEqual(len(self.store.list_runs()), original)

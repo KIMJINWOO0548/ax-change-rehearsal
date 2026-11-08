@@ -27,4 +27,4 @@ jobs:
       - run: python tools/validate_package.py
       - run: python run_demo.py
       - run: python run_workbench.py
-      - run: python -m compileall -q rehearsal tests tools run_demo.py run_workbench.py serve_workbench.py manage_evidence.py
+      - run: python -m compileall -q rehearsal tests tools run_demo.py run_workbench.py serve_workbench.py manage_evidence.py manage_recovery.py

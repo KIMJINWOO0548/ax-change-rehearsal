@@ -4,7 +4,7 @@
 
 고객서비스의 반품 기간 **14일 → 30일** 변경을 예로, FAQ만 수정한 상태와 API까지 수정한 상태를 구분합니다. 응답뿐 아니라 별도로 조회한 모의 저장 상태까지 비교합니다.
 
-현재 버전은 **합성 데이터와 메모리 기반 모의 어댑터를 사용하는 기술 데모**입니다. 실제 고객 데이터, 외부 기업 API, LLM, 문서 의미 추출, 운영 배포는 포함하지 않습니다.
+현재 버전은 **합성 데이터와 메모리 기반 모의 어댑터를 사용하는 통제된 로컬 파일럿 기반**입니다. 선택적으로 실행 근거와 검토 메모를 로컬에 보관합니다. 실제 고객 데이터, 외부 기업 API, LLM, 문서 의미 추출, 운영 배포는 포함하지 않습니다.
 
 ## 빠른 시작
 
@@ -26,9 +26,22 @@ python serve_workbench.py
 3. **리허설 실행:** 등록된 FAQ/API 모의 버전을 각각 선택합니다. 선택한 사례만 실제 실행하며 제외된 사례는 검증하지 않습니다.
 4. **차이·근거 검토:** 기대값·FAQ·기준/후보 API 응답과 독립 관찰 상태를 읽고, 실패 사례만 선택해 다시 검증합니다.
 
-최근 8개 실행을 이 탭의 메모리에 보관합니다. 같은 범위·정책·입력·기대값·구현 버전끼리 업무 개선/회귀와 FAQ/API 검사 개선/회귀를 비교합니다. 새로고침하면 이력은 사라지므로 필요한 실행은 JSON으로 내려받으세요. 부분 실행이 통과해도 전체 범위가 통과한 것은 아닙니다.
+최근 8개 실행을 이 탭의 메모리에 보관합니다. 같은 범위·정책·입력·기대값·구현 버전끼리 업무 개선/회귀와 FAQ/API 검사 개선/회귀를 비교합니다. 이 비교 이력은 새로고침하면 사라집니다. 별도 로컬 기록을 켜면 실행 원본과 검토 메모를 계속 보관할 수 있습니다. 부분 실행이 통과해도 전체 범위가 통과한 것은 아닙니다.
 
-이 서버는 로컬 컴퓨터의 합성 데모용입니다. 외부 네트워크에 공개하거나 운영 서버로 사용하지 마세요. 종료는 Ctrl+C입니다. 다른 포트는 `python serve_workbench.py --port 8766`으로 지정할 수 있습니다.
+### 선택적 로컬 기록
+
+```bash
+python serve_workbench.py --workspace /absolute/private/location/ax-pilot
+python manage_evidence.py --workspace /absolute/private/location/ax-pilot verify
+python manage_evidence.py --workspace /absolute/private/location/ax-pilot list
+python manage_evidence.py --workspace /absolute/private/location/ax-pilot replay RUN_ID
+```
+
+본인만 접근할 수 있는 위치의 새 폴더를 소스 저장소 밖에 지정하세요. 저장된 원본 결과, scope, hash, 검토 이력을 다시 열 수 있습니다. 검토 메모는 실행 hash·revision에 묶이며 다른 탭의 변경을 덮어쓰지 않습니다. 무결성 검사가 실패하면 중지하고, 동일 합성 결과의 명시적 재현은 원본/검토 상태를 바꾸지 않습니다. 최대 100회 실행을 저장하며 자동 삭제하지 않습니다.
+
+**이 기록은 암호화·사용자 인증·변경 불가능한 감사 로그가 아닙니다. 검토 표식은 배포 승인이 아닙니다.** 실제 고객·직원 정보나 비밀은 입력하지 마세요. 안전한 실행·백업·실제 기업 파일럿 전 수용 조건은 [LOCAL_PILOT.md](docs/LOCAL_PILOT.md)에 있습니다.
+
+이 서버는 로컬 컴퓨터의 합성 검증용입니다. 외부 네트워크에 공개하거나 운영 서버로 사용하지 마세요. 종료는 Ctrl+C입니다. 다른 포트는 `python serve_workbench.py --port 8766`으로 지정할 수 있습니다.
 
 서버 없이 읽는 오프라인 보고서도 지원합니다.
 
@@ -63,6 +76,7 @@ python run_workbench.py
 
 - `web/`: 정책 비교, 실행 설정, 사례별 근거와 JSON 내려받기를 제공하는 실제 작업 화면.
 - `rehearsal/app.py`, `server.py`: 고정된 정책 검토와 실제 모의 실행을 연결하는 로컬 HTTP API.
+- `rehearsal/storage.py`, `replay.py`: 선택적 로컬 실행/검토 기록, 무결성 검사와 명시적 합성 재현.
 - `rehearsal/engine.py`: 전후 실행, 재호출 검사, 독립 상태 관찰, 판정.
 - `rehearsal/validation.py`: 구현된 합성 팩의 엄격한 입력 계약 검사.
 - `rehearsal/adapters.py`: 세 업종의 모의 업무 규칙과 10가지 오류 주입.
@@ -78,7 +92,7 @@ python run_workbench.py
 
 현재 정책 시행일은 `2026-12-01`이며 모의 어댑터가 구현한 규정에 한정됩니다. 임의의 새 시행일을 메타데이터만 바꿔 실행할 수 없습니다. 날짜별 정책을 확장하려면 어댑터·규정·독립 시나리오를 함께 검토해야 합니다.
 
-메모리 분리는 OS 보안 샌드박스가 아닙니다. 실제 API/DB 연결, 영속 실행·재개, 사용자 인증·권한, 문서 파싱·의미 추출, 현업 정답 검증은 아직 구현하지 않았습니다. 정책 근거 위치는 수동 등록했으며 원문 hash가 바뀌면 작업대 실행을 막습니다. 로컬 요청 토큰은 다른 웹사이트의 요청을 차단하기 위한 장치이며 사용자 인증을 대신하지 않습니다. 설계 참고는 [references.md](docs/design/references.md), 실제 UI 검증 범위는 [frontend-qa.md](docs/design/frontend-qa.md)에 있습니다. 자세한 상태는 [HANDOFF.md](HANDOFF.md), 검증 범위는 [VALIDATION.md](docs/VALIDATION.md)에 있습니다.
+메모리 분리는 OS 보안 샌드박스가 아닙니다. 실제 API/DB 연결, 중단 작업 추적·worker 재개, 사용자 인증·권한, 문서 파싱·의미 추출, 현업 정답 검증은 아직 구현하지 않았습니다. 정책 근거 위치는 수동 등록했으며 원문 hash가 바뀌면 작업대 실행을 막습니다. 로컬 요청 토큰은 다른 웹사이트의 요청을 차단하기 위한 장치이며 사용자 인증을 대신하지 않습니다. 실행 도중 소스를 수정하면 차단하므로 업그레이드 후 서버를 다시 시작해야 합니다. 설계 참고는 [references.md](docs/design/references.md), 실제 UI 검증 범위는 [frontend-qa.md](docs/design/frontend-qa.md)에 있습니다. 자세한 상태는 [HANDOFF.md](HANDOFF.md), 검증 범위는 [VALIDATION.md](docs/VALIDATION.md)에 있습니다.
 
 ## 공개 범위와 라이선스
 

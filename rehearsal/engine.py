@@ -10,6 +10,7 @@ import json
 from collections import Counter
 from pathlib import Path
 
+from . import assert_sources_unchanged
 from .adapters import ADAPTERS, VARIANTS, digest, observe
 from .validation import load_json, validate_pack, validate_selection
 
@@ -29,7 +30,8 @@ def load_packs(domains: list[str] | None = None) -> list[dict]:
 
 
 def manifest_for(pack: dict, variant: str) -> dict:
-    source_files = [ROOT / "rehearsal" / name for name in ("engine.py", "adapters.py", "validation.py")]
+    assert_sources_unchanged()
+    source_files = [ROOT / "rehearsal" / name for name in ("engine.py", "adapters.py", "validation.py", "__init__.py")]
     source_files += [ROOT / "fixtures" / pack["pack_id"] / rel for rel in pack["source_documents"].values()]
     content = {
         "pack_digest": digest(pack), "domain": pack["pack_id"], "variant": variant,
@@ -152,6 +154,7 @@ def run_pack(pack: dict, variant: str = "normal") -> dict:
             verdict = "PASS_WITHIN_SCOPE"
         assertions = "FAIL" if any(s["assertion_status"] == "FAIL" for s in sides) else ("INCOMPLETE" if any(s["assertion_status"] == "INCOMPLETE" for s in sides) else "PASS")
         cases.append({"id": case["id"], "label": case["label"], "input": case["business_input"], "intended_behavior": case["intended_behavior"], "baseline": before, "candidate": after, "business_verdict": verdict, "assertion_status": assertions})
+    assert_sources_unchanged()
     counts = Counter(c["business_verdict"] for c in cases)
     readiness = "BLOCKED" if counts["FAIL"] else ("REVIEW_REQUIRED" if counts["INCONCLUSIVE"] else "PASS_WITHIN_REGISTERED_SCOPE")
     return {"domain": pack["pack_id"], "title": pack["title"], "manifest": manifest, "variant": variant, "cases": cases, "readiness": readiness, "counts": dict(counts)}

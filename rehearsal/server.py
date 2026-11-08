@@ -4,17 +4,20 @@ from __future__ import annotations
 import json
 import re
 import secrets
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .app import build_context, execute_run
 from .engine import ROOT
 from .validation import _reject_constant, _unique_pairs
+from .storage import EvidenceStore, StorageError, StorageConflict, StorageLimit, RunNotFound, storage_info
 
 
 ASSETS = {'/': ('index.html', 'text/html; charset=utf-8'),
           '/index.html': ('index.html', 'text/html; charset=utf-8'),
           '/app.css': ('app.css', 'text/css; charset=utf-8'),
           '/app.js': ('app.js', 'text/javascript; charset=utf-8'),
+          '/archive.js': ('archive.js', 'text/javascript; charset=utf-8'),
           '/review.js': ('review.js', 'text/javascript; charset=utf-8')}
 MAX_BODY = 2048
 CSP = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
@@ -23,7 +26,8 @@ CSP = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'sel
 class WorkbenchServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, port):
+    def __init__(self, port, workspace=None):
+        self.store = EvidenceStore(workspace) if workspace is not None else None
         self.csrf_token = secrets.token_urlsafe(32)
         super().__init__(('127.0.0.1', port), WorkbenchHandler)
 
@@ -82,9 +86,25 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
         if self.path == '/api/context':
             try:
                 context = build_context()
-                self._send(200, {**context, 'csrf_token': self.server.csrf_token})
+                if self.server.store:
+                    self.server.store.list_runs()  # Fail closed if the ledger was altered.
+                    context['limits'] = [line for line in context['limits'] if not line.startswith('실행은 메모리에')]
+                    context['limits'].append('로컬 합성 기록만 저장합니다. 암호화·인증·서명은 없으며 파일 소유자는 기록과 해시를 다시 쓸 수 있습니다. 검토 표시는 배포 승인이 아닙니다.')
+                self._send(200, {**context, 'csrf_token': self.server.csrf_token, 'storage': storage_info(self.server.store is not None)})
+            except StorageError:
+                self._storage_error(StorageError())
             except Exception:
                 self._error(500, 'CONTEXT_UNAVAILABLE', '규정 근거를 읽지 못했습니다. 로컬 프로젝트 파일을 확인하세요.')
+        elif self.path == '/api/runs' or self._run_path() is not None:
+            if self.server.store is None:
+                self._error(503, 'STORAGE_DISABLED', '저장은 꺼져 있습니다. --workspace로 로컬 합성 기록을 활성화하세요.')
+                return
+            try:
+                result = ({'runs': self.server.store.list_runs(), 'storage': storage_info(True)}
+                          if self.path == '/api/runs' else self.server.store.get(self._run_path()))
+                self._send(200, result)
+            except StorageError as exc:
+                self._storage_error(exc)
         elif self.path in ASSETS:
             name, content_type = ASSETS[self.path]
             try:
@@ -94,10 +114,26 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
         else:
             self._error(404, 'NOT_FOUND', '요청한 경로가 없습니다.')
 
+    def _run_path(self, review=False):
+        suffix = '/review' if review else ''
+        match = re.fullmatch(r'/api/runs/([0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})' + suffix, self.path)
+        return uuid.UUID(match[1]).hex if match else None
+
+    def _storage_error(self, exc):
+        if isinstance(exc, RunNotFound):
+            self._error(404, 'RUN_NOT_FOUND', '저장된 실행을 찾지 못했습니다.')
+        elif isinstance(exc, StorageConflict):
+            self._error(409, 'REVIEW_CONFLICT', '기록이 변경되었거나 해시가 일치하지 않습니다. 다시 불러오세요.')
+        elif isinstance(exc, StorageLimit):
+            self._error(409, 'STORAGE_LIMIT', '로컬 기록 한도에 도달했습니다. 기존 기록은 삭제하지 않습니다.')
+        else:
+            self._error(503, 'STORAGE_UNAVAILABLE', '로컬 기록 검증 또는 저장에 실패했습니다. 기록을 신뢰하거나 통과로 간주하지 마세요.')
+
     def do_POST(self):
         if not self._trusted_request():
             return
-        if self.path != '/api/run':
+        review_id = self._run_path(review=True)
+        if self.path != '/api/run' and review_id is None:
             self._error(404, 'NOT_FOUND', '요청한 경로가 없습니다.')
             return
         tokens = self.headers.get_all('X-CSRF-Token', [])
@@ -116,7 +152,7 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             self._error(400, 'INVALID_LENGTH', '요청 길이가 유효하지 않습니다.')
             return
         length = int(lengths[0])
-        if length > MAX_BODY:
+        if length > (8192 if review_id else MAX_BODY):
             self._error(413, 'BODY_TOO_LARGE', '요청 크기 제한을 넘었습니다.')
             return
         try:
@@ -125,7 +161,18 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                 raise ValueError('Incomplete request')
             config = json.loads(raw.decode('utf-8'), object_pairs_hook=_unique_pairs,
                                 parse_constant=_reject_constant)
-            result = execute_run(config)
+            if review_id:
+                if self.server.store is None:
+                    self._error(503, 'STORAGE_DISABLED', '저장은 꺼져 있습니다. --workspace로 로컬 합성 기록을 활성화하세요.')
+                    return
+                result = self.server.store.review(review_id, config)
+            else:
+                result = execute_run(config)
+                if self.server.store is not None:
+                    record = self.server.store.save(result)
+                    result = {**result, 'record': record}
+        except StorageError as exc:
+            self._storage_error(exc)
         except (ValueError, UnicodeError):
             self._error(400, 'INVALID_CONFIGURATION', '설정을 확인하세요. 지원하지 않는 버전·입력 또는 변경된 정책 근거입니다.')
         except (TimeoutError, OSError):
@@ -139,7 +186,7 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
         self._error(405, 'METHOD_NOT_ALLOWED', '지원하지 않는 요청 방식입니다.')
 
 
-def make_server(port=8765):
+def make_server(port=8765, workspace=None):
     if type(port) is not int or not 0 <= port <= 65535:
         raise ValueError('Invalid port')
-    return WorkbenchServer(port)
+    return WorkbenchServer(port, workspace)

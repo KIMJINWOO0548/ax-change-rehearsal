@@ -164,3 +164,83 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(status,500)
         self.assertNotIn(b'private',body)
         self.assertNotIn(b'Traceback',body)
+
+
+class PersistentServerTests(unittest.TestCase):
+    request = ServerTests.request
+    token = ServerTests.token
+    post = ServerTests.post
+
+    def setUp(self):
+        import tempfile
+        from rehearsal.server import make_server
+        self.directory = tempfile.TemporaryDirectory()
+        self.server = make_server(0, workspace=self.directory.name)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self):
+        self.server.shutdown(); self.server.server_close(); self.thread.join(timeout=3)
+        self.directory.cleanup()
+
+    def review(self, run, **changes):
+        payload = {'expected_revision': 0, 'report_sha256': run['record']['sha256'],
+                   'status': 'REVIEWED', 'note': '합성' * 500, **changes}
+        return self.request('POST', '/api/runs/' + run['run_id'] + '/review',
+                            json.dumps(payload, ensure_ascii=False).encode('utf-8'),
+                            {'Content-Type': 'application/json', 'X-CSRF-Token': self.token()})
+
+    def test_saved_report_and_review_preserve_partial_scope(self):
+        status, _, body = self.post(json.dumps({'faq_version': 'corrected', 'api_version': 'corrected', 'case_ids': ['S01']}))
+        self.assertEqual(status, 200); run = json.loads(body)
+        self.assertEqual(run['record']['revision'], 0)
+        status, _, body = self.request(path='/api/runs')
+        self.assertEqual(status, 200); listing = json.loads(body)
+        self.assertTrue(listing['storage']['enabled'])
+        self.assertEqual(listing['runs'][0]['scope'], run['scope'])
+        status, _, body = self.review(run)
+        self.assertEqual(status, 200); detail = json.loads(body)
+        record = run.pop('record')
+        self.assertEqual(detail['report'], run)
+        self.assertEqual(detail['record']['revision'], 1)
+        self.assertEqual(detail['record']['sha256'], record['sha256'])
+        self.assertEqual(detail['report']['readiness'], 'PARTIAL_SCOPE')
+        self.assertFalse(detail['record']['review_is_approval'])
+        run['record'] = record
+        self.assertEqual(self.review(run)[0], 409)
+        self.assertEqual(self.request(path='/api/runs/' + run['run_id'])[0], 200)
+
+    def test_history_guards_and_unknown(self):
+        run = json.loads(self.post()[2]); path = '/api/runs/' + run['run_id'] + '/review'
+        self.assertEqual(self.request('POST', path, '{}', {'Content-Type': 'application/json'})[0], 403)
+        self.assertEqual(self.request(path='/api/runs', headers={'Origin': 'https://evil.example'})[0], 403)
+        self.assertEqual(self.request(path='/api/runs/' + 'f'*32)[0], 404)
+        self.assertEqual(self.review(run, identity='forged')[0], 400)
+        headers = {'Content-Type': 'application/json', 'X-CSRF-Token': self.token()}
+        self.assertEqual(self.request('POST', path, '{"note":"a","note":"b"}', headers)[0], 400)
+        self.assertEqual(self.request('POST', path, 'x'*8193, headers)[0], 413)
+
+    def test_corrupt_store_errors_no_sensitive_details(self):
+        run = json.loads(self.post()[2]); token = self.token()
+        self.server.store.path.write_bytes(b'private/path/secret')
+        for method, path, data in [('GET', '/api/runs', None), ('GET', '/api/context', None),
+                                   ('GET', '/api/runs/' + run['run_id'], None),
+                                   ('POST', '/api/run', '{"faq_version":"corrected","api_version":"corrected"}')]:
+            status, _, body = self.request(method, path, data, {'Content-Type': 'application/json', 'X-CSRF-Token': token})
+            self.assertEqual(status, 503)
+            self.assertNotIn(b'private', body); self.assertNotIn(b'Traceback', body)
+
+
+class EphemeralHistoryTests(unittest.TestCase):
+    setUpClass = classmethod(ServerTests.setUpClass.__func__)
+    tearDownClass = classmethod(ServerTests.tearDownClass.__func__)
+    request = ServerTests.request
+    token = ServerTests.token
+    post = ServerTests.post
+
+    def test_disabled_history_and_no_record(self):
+        self.assertFalse(json.loads(self.request()[2])['storage']['enabled'])
+        self.assertNotIn('record', json.loads(self.post()[2]))
+        self.assertEqual(self.request(path='/api/runs')[0], 503)
+        self.assertEqual(self.request('POST', '/api/runs/' + 'a'*32 + '/review', '{}',
+                                     {'Content-Type': 'application/json', 'X-CSRF-Token': self.token()})[0], 503)

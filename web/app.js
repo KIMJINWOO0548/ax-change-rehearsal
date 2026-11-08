@@ -97,6 +97,7 @@
     state.selectedIds=new Set(state.context.cases.filter(predicate).map(c=>c.id));
     renderSelection();invalidate();
   }
+  const archive=globalThis.RehearsalArchive?.mount(document,request);
   async function loadContext() {
     $('reload').hidden=true;$('connection').hidden=false;$('connection').textContent='정책과 시나리오를 불러오는 중입니다.';
     try {
@@ -104,7 +105,7 @@
       if(!context.csrf_token || !context.policy?.before?.lines || !context.policy?.after?.lines ||
          !context.defaults || !context.project || !Array.isArray(context.cases) || !context.cases.length ||
          new Set(context.cases.map(c=>c.id)).size!==context.cases.length) throw new Error('정책 응답의 필수 정보가 없습니다.');
-      state.context=context;
+      state.context=context;archive?.configure(context);
       for(const name of ['faq_version','api_version']) {
         const input=Array.from(document.querySelectorAll('input[name="'+name+'"]')).find(i=>i.value===context.defaults[name]);
         if(!input)throw new Error('지원되지 않는 기본 버전입니다.');input.checked=true;
@@ -120,7 +121,7 @@
       renderLimits(context.limits);$('connection').hidden=true;
       if(context.policy_review_valid===false)status('정책 문서가 바뀌었습니다. 근거와 독립 시나리오를 다시 검토해야 실행할 수 있습니다.','error');
     } catch(error) {
-      state.context=null;$('connection').textContent='연결하지 못했습니다. '+error.message;$('connection').className='notice error';$('reload').hidden=false;
+      state.context=null;archive?.configure(null);$('connection').textContent='연결하지 못했습니다. '+error.message;$('connection').className='notice error';$('reload').hidden=false;
     } finally {availability();}
   }
   function renderLimits(limits) { $('limits').replaceChildren(...(limits||[]).map(item=>el('li',item))); }
@@ -245,6 +246,7 @@
       const result=await request('/api/run',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':state.context.csrf_token},body:JSON.stringify(config)});
       if(token!==state.request||revision!==state.revision) {status('설정이 변경되어 진행 중인 응답을 사용하지 않았습니다. 다시 실행하세요.','warning');return;}
       validateResult(result,config);state.result=result;state.stale=false;
+      archive?.afterRun(result);
       state.history=[result,...state.history.filter(r=>r.run_id!==result.run_id)].slice(0,8);renderResult();
     } catch(error) {
       if(token===state.request)status('실행하지 못했습니다. '+error.message+(state.result?' 아래는 이전 실행 결과이며 현재 결과가 아닙니다.':'')+' 다시 실행하세요.','error');

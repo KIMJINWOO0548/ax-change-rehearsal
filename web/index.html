@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light"><title>정책 변경 리허설 · AX</title>
-  <link rel="stylesheet" href="/app.css"><script src="/review.js" defer></script><script src="/app.js" defer></script>
+  <link rel="stylesheet" href="/app.css"><script src="/review.js" defer></script><script src="/archive.js" defer></script><script src="/app.js" defer></script>
 </head>
 <body>
 <a class="skip" href="#main">본문 바로가기</a>
@@ -14,6 +14,7 @@
     <a href="#scenarios"><span>02</span> 사례 선택</a>
     <a href="#configuration"><span>03</span> 리허설 실행</a>
     <a href="#results"><span>04</span> 차이·근거 검토</a>
+    <a href="#archive"><span>05</span> 저장 근거·검토 메모</a>
   </nav>
   <p class="rail-foot">합성 데이터 · 로컬 실행<br><small>실제 고객 시스템에 쓰지 않습니다.</small></p>
 </aside>
@@ -105,8 +106,29 @@
         <div id="state-comparison" class="state-comparison"></div>
         <div id="detail-evidence"></div><div id="detail-objects"></div>
       </section>
-      <p class="section-note">실행 이력은 이 탭에서 최근 8개까지만 유지됩니다. 새로고침하면 사라집니다.</p>
+      <p class="section-note">위 비교 이력은 이 탭의 최근 8개입니다. 새로고침하면 사라집니다. 별도 로컬 저장 여부는 아래에서 확인하세요.</p>
     </div>
+  </section>
+  <section id="archive" aria-labelledby="archive-title">
+    <div class="section-heading"><h2 id="archive-title"><span>05</span> 저장 근거·검토 메모</h2><button id="archive-refresh" class="secondary" type="button" disabled>저장 목록 새로고침</button></div>
+    <p id="archive-mode" class="notice">로컬 저장 설정을 확인하는 중입니다.</p>
+    <p class="section-note">합성 자료 전용입니다. 로그인·권한 분리·암호화·실제 시스템 연결은 제공하지 않습니다. 검토 메모는 신원 확인, 승인, 전자서명 또는 배포 허가가 아닙니다.</p>
+    <p id="archive-status" role="status" aria-live="polite" class="section-note"></p>
+    <ul id="archive-list" class="archive-list" aria-label="저장된 합성 실행"></ul>
+    <section id="archive-detail" class="inspector" hidden tabindex="-1" aria-labelledby="archive-detail-title">
+      <div class="section-heading"><h3 id="archive-detail-title">저장된 실행 · 현재 실행과 별개</h3><button id="archive-close" class="secondary" type="button">저장 상세 닫기</button></div>
+      <p class="notice warning">과거 저장 근거입니다. 현재 설정의 실행 결과를 바꾸거나 최신 정책 검증을 대신하지 않습니다.</p>
+      <p id="archive-meta" class="mono meta"></p>
+      <div id="archive-evidence"></div>
+      <h3>검토 메모 이력</h3><ol id="archive-events" class="archive-events"></ol>
+      <form id="archive-review-form" class="archive-form">
+        <label for="archive-review-status">로컬 검토 표시<select id="archive-review-status"><option value="REVIEWED">검토함 · 승인 아님</option><option value="CHANGES_REQUESTED">수정 요청</option></select></label>
+        <label for="archive-note">검토 메모 (최대 1,000자)<textarea id="archive-note" maxlength="1000" rows="4" aria-describedby="archive-note-warning"></textarea></label>
+        <p id="archive-note-warning" class="section-note">실제 고객 정보, 개인정보, 비밀·인증정보를 입력하지 마세요. 이 메모는 로컬 파일에 저장됩니다.</p>
+        <button id="archive-save" type="submit" disabled>로컬 검토 메모 저장</button>
+        <button id="archive-reload-detail" class="secondary" type="button">이 기록 다시 확인 (입력 유지)</button>
+      </form>
+    </section>
   </section>
   <footer><details><summary>실행 범위와 한계</summary><ul id="limits"><li>실제 고객·주문이 아닌 합성 시나리오를 모의 환경에서 실행합니다.</li></ul></details></footer>
 </main>

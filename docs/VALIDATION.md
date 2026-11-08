@@ -98,3 +98,17 @@ Node는 애플리케이션 실행 의존성이 아니라 프런트엔드 개발 
 실행 비교는 필수 정책/구현 SHA-256과 전체 등록 팩, 선택 범위, 실제 입력과 기준·후보 기대값이 모두 일치할 때만 제공한다. FAQ 회귀와 API 개선이 동시에 일어나도 개별 검사 회귀를 숨기지 않는다. 잘못된 서버 응답의 준비 상태·집계·미실행 목록은 화면에서 거부한다.
 
 로컬 Windows Python 83개, 프런트엔드 18개 검사가 통과했다. 실제 Chrome에서 선택·비교·교차 회귀·근거·다운로드·키보드·390px 화면·오류 복구를 검사했다. CI 결과는 최종 commit의 실행 기록으로 확인한다.
+
+## 0.5.0 로컬 증거와 검토 메모
+
+클라우드 Python 3.12에서 Python 109개, 의존성 없는 프런트엔드 29개 검사가 통과했다. SQLite 재시작 복원, 전체 ledger/report hash 검증, 보고서·이벤트 변경·삭제·파일 손상, 안전하지 않은 경로/권한, 한도, 동시 revision 충돌, 원본/부분 범위 보존, 저장 비활성 기본값과 HTTP 보안 경계를 포함한다. CLI 검증·목록·재현은 원본 기록이나 검토 상태를 바꾸지 않는다.
+
+코드를 import한 뒤 디스크 소스가 바뀌는 경우와 실행 중 정책 원문·pack·FAQ 입력이 바뀌는 경우를 별도 프로세스에서 재현했다. 수정 전 실패를 확인한 뒤 실행 전후 fingerprint 검사로 반환을 차단했다. 이는 로컬 파일 쓰기 권한자의 악의적 파일 교체·복구 방어가 아니다.
+
+저장 UI는 synthetic 표시, scope/집계/판정, manifest/record binding, 이력 revision/hash, 잘못된 서버 응답을 검증한다. 중복 저장·불확실 저장 응답·지연된 읽기 중 메모 손실도 회귀에 포함한다.
+
+실제 브라우저 재현 스크립트는 `tests/frontend/archive-browser.cjs`다. Playwright와 설치된 Chromium을 개발 환경에서 사용한다. 애플리케이션 실행에는 이 의존성이 필요 없다. 이 파일의 존재나 구문 검사만으로 실제 화면 시험 통과를 주장하지 않는다. 실행 환경별 실측 결과는 `docs/design/frontend-qa.md`에 기록한다.
+
+### 0.5.0 Windows final validation
+
+Windows Python 3.12.10 ran 111 tests: 109 passed and 2 skipped (POSIX permissions and unavailable Windows symlink privilege). Hardlink rejection and corrupt-database connection cleanup were tested. Node 24.22.1 passed all 29 frontend tests. Actual installed Chrome passed the legacy workbench suite and 10 archive browser check groups, including restart persistence, review conflicts and uncertain-response recovery. Desktop/mobile screenshots were opened and inspected. Details and explicit scope limits are recorded in `docs/design/frontend-qa.md`.

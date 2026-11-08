@@ -224,3 +224,16 @@ manifest는 정규화한 설정·scope·전체 등록 팩의 `registered_pack_sh
 `verification`은 후보의 응답·상태·재호출 증거를 검증한 assertion 요약이다. 원래 assertion 오류를 보존하고 실제 첫 호출·재호출 snapshot에서 건수, 테이블, 대상, 작업 키, 입력 digest, decision, 기존 상태 보존, 재호출 불변을 확인한다. 건수 일치만으로 PASS가 되지 않는다. 확인된 불일치가 있으면 FAIL, 불일치는 없지만 호출·관찰이 불완전하면 INCOMPLETE다. 필요한 증거가 모두 확인돼야 PASS다. 이는 업무 판정 통과와 다르며 미확인 입력의 진단 검증은 PASS일 수 있다.
 
 `checks`는 true/false/null이다. 실제 관찰이 없거나 비교할 신규 행이 없어 해당 행 검사가 적용되지 않으면 null이다. 쓰기가 없어야 하는 사례의 관찰 건수 0과 재호출 불변이 확인되면 행 관련 check가 null이어도 정상일 수 있다. null을 통과·0·false로 치환하지 않는다. `errors`는 근거에서 확인된 불일치이며, 호출·관찰 실패 세부 정보는 원래 `candidate.invocation_error`, `candidate.observation_error`에 남는다.
+
+
+## 선택적 로컬 증거 저장 · 0.5.0
+
+`--workspace`를 명시할 때만 저장한다. 서버가 직접 생성한 합성 실행 원본을 저장하며 HTTP로 임의 보고서·정책·파일·URL을 가져오는 API는 없다. 실행 응답에는 저장 성공 뒤에만 `record`가 추가된다. 원본 보고서에는 record를 섞지 않는다.
+
+`record`는 `run_id`, `sha256`, `created_at`, `revision`, `review_status`, `review_is_approval:false`를 가진다. `GET /api/runs`는 요약 목록과 storage 설정을, `GET /api/runs/{run_id}`는 `{report,record,events}`를 반환한다. 기록 식별자는 서버가 만든 UUID다.
+
+`POST /api/runs/{run_id}/review`는 CSRF 검증 후 `{expected_revision,report_sha256,status,note}`만 받는다. `status`는 REVIEWED 또는 CHANGES_REQUESTED, note는 최대 1000문자다. hash/revision 불일치는 409이며 덮어쓰거나 자동 재시도하지 않는다. 초기 상태는 UNREVIEWED다. 메모 변경은 기존 이벤트 수정 대신 새 revision을 남긴다. 리뷰 상태는 업무 판정을 변경하지 않는다.
+
+서버는 모든 저장 작업에서 전체 SQLite ledger와 hash 연결/head를 확인하고 트랜잭션으로 저장한다. 손상은 503, 한도는 409, 없는 실행은 404다. 최대100개 실행, 실행당 최대1000개 검토 이벤트이며 자동 삭제 API는 없다. 저장하지 않은 모드는503 STORAGE_DISABLED다. 상세 위협과 한계는 docs/LOCAL_PILOT.md를 따른다.
+
+기록의 hash 일치·REVIEWED 상태·합성 재현 MATCH는 실제 정책 정확성, 검토자의 신원, 불변 감사, 운영 승인 중 어느 것도 뜻하지 않는다.

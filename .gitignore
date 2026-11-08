@@ -13,3 +13,10 @@ results/*.json
 results/workbench/
 MANIFEST.json
 VALIDATION_RESULT.json
+# Private local pilot evidence must never be published.
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+.ax-workspace/

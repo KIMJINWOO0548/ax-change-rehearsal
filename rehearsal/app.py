@@ -7,6 +7,7 @@ import hashlib
 import uuid
 from collections import Counter
 
+from . import assert_sources_unchanged
 from .adapters import ADAPTERS, digest
 from .engine import ROOT, check_observation, load_packs, run_pack
 from .validation import load_json, require
@@ -26,7 +27,7 @@ LIMITS = [
     'FAQ와 API는 별도의 결정적 모의 구현입니다. LLM이나 문서 의미 자동 추출을 실행하지 않습니다.',
     '문서 근거 위치는 등록된 합성 정책에 수동 연결했습니다. 임의 규정의 해석을 보장하지 않습니다.',
     '미확인 3개를 통과로 바꾸지 않습니다. 이 결과는 실제 배포 승인이나 현업 정확도가 아닙니다.',
-    '실행은 메모리에 한정됩니다. 서버를 종료하면 별도 저장되지 않으며 필요한 기록은 JSON으로 내려받으세요.',
+    '기본은 메모리 실행입니다. --workspace로 켠 로컬 기록만 보존되며, 검토 표식은 인증이나 배포 승인이 아닙니다.',
 ]
 
 
@@ -138,8 +139,22 @@ def _state_summary(side: dict, data: dict, adapter) -> dict:
     }
 
 
+def _input_fingerprint():
+    # This workbench supports only these registered local artifacts. Snapshot
+    # their bytes before parsing and recheck before returning evidence. No
+    # saved path or arbitrary import controls this list.
+    names = ('fixtures/customer_service/pack.json',
+             'fixtures/customer_service/policy_before.md',
+             'fixtures/customer_service/policy_after.md',
+             'examples/customer_service/faq_stale.json',
+             'examples/customer_service/faq_corrected.json')
+    return {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in names}
+
+
 def execute_run(configuration: dict) -> dict:
+    assert_sources_unchanged()
     _validate_configuration(configuration)
+    input_fingerprint = _input_fingerprint()
     configuration = copy.deepcopy(configuration)
     pack = load_packs(['customer_service'])[0]
     registered_pack_sha256 = digest(pack)
@@ -212,6 +227,9 @@ def execute_run(configuration: dict) -> dict:
                 'faq_sha256': faq['sha256'], 'faq_artifact_sha256': digest(faq_config),
                 'faq_review': faq['review'], 'policy_sha256': {s: p['sha256'] for s, p in policy.items()},
                 'service_sources': sources}
+    assert_sources_unchanged()
+    require(input_fingerprint == _input_fingerprint(),
+            'Execution inputs changed; restart and review before running.')
     return {'run_id': uuid.uuid4().hex, 'created_at': dt.datetime.now(dt.timezone.utc).isoformat(),
             'configuration': configuration, 'manifest_sha256': digest(manifest), 'manifest': manifest,
             'synthetic_only': True, 'readiness': readiness, 'scope': scope,

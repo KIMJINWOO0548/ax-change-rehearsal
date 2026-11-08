@@ -124,3 +124,18 @@ Windows Python 3.12.10 ran 111 tests: 109 passed and 2 skipped (POSIX permission
 ### 0.6.0 Windows final validation
 
 Windows Python 3.12.10 ran 139 tests: 135 passed and 4 skipped (two POSIX permission checks and two unavailable Windows symlink-privilege checks). Recovery and storage hardlink tests passed separately. Node 24.22.1 passed all 29 frontend tests. Installed Chrome passed the complete workbench regression, 10 archive check groups and 7 live backup/inspect/new-workspace-restore check groups. Desktop/mobile screenshots were opened and inspected. Validator, demo, offline workbench, syntax, compileall and whitespace checks passed. See `docs/design/frontend-qa.md` for actual coverage and remaining limits. Exact-commit CI remains independently verified across Ubuntu/Windows and Python 3.10-3.13.
+
+## 0.7.0 선택적 암호화 사본
+
+고정 의존성 cryptography50.0.2가 설치된 Linux/Python3.12 격리 환경에서 최신 Python168개(생략없음), 프런트엔드29개,3팩36사례 검증이 통과했다. 기본 코어와 sealed 모듈의 stdlib-only import도 확인했다. CI는8개 네이티브Python/OS조합에서 hash 고정 wheel을 설치하고 encrypted capability를 명시적으로 검사한다.
+
+생산 profile의 full-cost scrypt로 roundtrip, 무작위 salt/nonce, 잘못된 비밀번호·tag/header/길이/파일 변조, oversized 입력의 KDF 전 차단, source 읽기 변경, 기존 대상 보존, private 경로, short write/fsync 오류, 불완전 복원 표식, 유효AEAD지만 잘못된 내부DB, WAL 원문 bytes 보존을 검사했다. inspect의 인증된 envelope 검사와 복원 파일의 전체DB검사를 구분한다. native SQLite deserialize는 구현에서 제거했다.
+
+CLI는 합성 문구만 사용해 실제 Linux PTY에서도 seal/inspect/restore를 실행했다. 입력이 echo되지 않았고, 잘못된 문구는 출력 폴더를 만들지 않았으며, 올바른 복원은 전체 ledger검사를 통과했다. unit검사는 non-TTY, getpass 경고, 재입력 불일치, 비밀번호 인수를 잘못 제공했을 때 값이 오류에 노출되지 않는 경우를 포함한다. 실제 사용자의 비밀번호나 기업 데이터는 사용하지 않았다.
+
+작은 합성12사례 측정(같은 Linux process, tools/measure_sealed.py): DB90,112bytes, sealed90,482bytes, seal0.3365s/inspect0.3363s/restore0.3478s, process peak RSS158,121,984bytes였다. 이는 한 번의 작은 sample 측정이며,128MiB최대파일·다른컴퓨터·동시부하의 성능 보장이 아니다. Windows와 실제 UI 측정은 docs/design/frontend-qa.md에 별도 기록한다.
+
+
+### 0.7.0 Windows final validation
+
+Windows Python 3.12.10 with the hash-locked optional encryption environment ran 170 tests: 165 passed and 5 skipped (two POSIX permission tests and three unavailable Windows symlink-privilege tests). Path and hardlink rejection remained separate and passed. Node 24.22.1 passed all 29 frontend tests; standard-library-only core import, pip check, validator (3 packs / 36 cases), demo, offline workbench, syntax, compileall and whitespace checks passed. Installed Chrome passed the full workbench regression, 10 archive groups, 7 recovery groups and 7 encrypted-copy recovery groups. Actual desktop/mobile screenshots were opened and inspected. The 12-case measurement and limits are recorded in `docs/design/frontend-qa.md`. This does not claim Windows hidden-input terminal execution, maximum-size performance, Windows ACL isolation or production readiness. Exact-commit CI is checked separately across eight Ubuntu/Windows Python versions.

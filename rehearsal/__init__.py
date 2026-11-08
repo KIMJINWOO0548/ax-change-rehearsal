@@ -6,7 +6,7 @@ Restart after upgrades. Keep the checkout immutable while a process is running.
 import hashlib
 from pathlib import Path
 
-__version__ = '0.6.0'
+__version__ = '0.7.0'
 
 _SOURCE_ROOT = Path(__file__).resolve().parent
 # Capture before submodules import, rather than fingerprinting newer disk code

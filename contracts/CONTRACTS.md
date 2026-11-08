@@ -248,3 +248,14 @@ Format 1은 정확히 evidence.sqlite3와 manifest.json 두 파일이다. manife
 inspect는 read-only/immutable 연결로 검증하며 생성자 기반 초기화나 복구를 하지 않는다. restore는 사본 checksum과 원래 검증된 report/review 구조가 모두 일치해야 완료 표식을 제거한다. 실패 폴더는 미완료 상태로 남고, EvidenceStore는 복구 미완료 또는 backup manifest가 있는 경로를 작업 공간으로 열지 않는다.
 
 이 checksum은 snapshot 복사본을 식별하며 실행 중인 원본 파일의 checksum과 동일하다고 주장하지 않는다. 백업은 평문이고 hash는 인증/서명이 아니다. 데이터와 hash 전체를 다시 작성하는 로컬 소유자의 조작, 외부 시스템 상태, 실행 중단 작업이나 저장 전 결과를 복구/증명하지 않는다.
+
+
+## 선택적 sealed format 1 · 0.7.0
+
+`manage_sealed.py seal/inspect/restore`는 로컬 CLI만 제공한다. password 인수·환경변수·파일·stdin 경로를 제공하지 않고 숨김 TTY에서만 입력받는다. getpass 경고 fallback은 거부하며 argparse 오류도 값/경로를 출력하지 않는다. 최소12 Unicode문자, UTF-8최대1024바이트 검사이며 강도 보장은 아니다.
+
+Header는 big-endian `8s B 16s 12s Q`: magic AXSEALED, version1, salt16, nonce12, ciphertext 길이다. header45바이트 전체가 AAD다. ciphertext는 manifest 길이4바이트, canonical manifest, 원본SQLite bytes를 AES-256-GCM으로 암호화한 내용과16바이트tag다. scrypt profile은 N=131072,r=8,p=1,32bytekey로 고정한다. 입력에서 알고리즘/KDF비용을 받지 않는다.
+
+seal은 source bundle 검증과 실제 read checksum을 확인하고 새 ciphertext 파일만 만든다. inspect는 AEAD와 정확한 형식/manifest/DB checksum만 확인하며 AUTHENTICATED_ENVELOPE 및 database_verified:false다. native in-memory SQLite deserialize는 쓰지 않는다. restore는 인증 후 새 private incomplete 폴더에 원문을 쓰고 기존 파일 기반 schema/ledger 검증을 마친 경우에만 RESTORED_DATABASE_VERIFIED, database_verified:true다. 기존 대상은 덮어쓰지 않는다.
+
+잘못된 비밀번호·태그·checksum은 평문 출력 생성 전에 실패한다. 인증 후 내부DB검사/쓰기 실패는 새 평문 일부와 incomplete 표식이 남을 수 있으며 작업대는 이를 거부한다. 원본·기존평문·복원공간·메모리의 암호화나 안전삭제를 보장하지 않는다. AEAD는 비밀번호 보유자에 대한 byte무결성이지 작성자신원/서명/최신성/조직승인이 아니다.

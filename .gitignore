@@ -20,3 +20,7 @@ VALIDATION_RESULT.json
 *.db
 *.db-*
 .ax-workspace/
+
+# Sealed copies still contain private business evidence.
+*.axsealed
+.sealed-*

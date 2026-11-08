@@ -1,6 +1,15 @@
-# 구현 상태 · 0.6.0
+# 구현 상태 · 0.7.0
 
 ## 이번 버전의 구현
+
+- 검증된 평문 백업에서 새 AES-256-GCM 암호화 사본 생성, 고정 비용 scrypt와 매번 새로운 salt/nonce.
+- 로컬 getpass 숨김 입력과 확인, non-TTY·평문 fallback 거부, 잘못된 CLI 인수의 값도 오류에 노출하지 않음.
+- 암호문/manifest/checksum 검사와 새 private 복원 파일의 전체 schema/ledger 검증을 구분.
+- 공식 cryptography·전이 의존성의 wheel-only SHA-256 lock, 라이선스와 공개 보안 공지 검토 기록.
+- 원본 DB·기존 평문 백업·복원 공간은 평문. 사용자 인증·조직 키 관리·안전 삭제·실데이터 사용 승인 없음.
+- 상세 실행과 한계는 `docs/SEALED_BACKUPS.md`, 공급망 검토는 `docs/DEPENDENCIES.md`.
+
+## 0.6.0에서 유지한 구현
 
 - 일관된 SQLite 백업, 읽기 전용 검사, 새 전용 폴더로만 복원하는 로컬 CLI.
 - DB checksum, 정확한 schema와 ledger 검증, 기존 데이터 덮어쓰기 거부.

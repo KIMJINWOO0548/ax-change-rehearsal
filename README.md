@@ -8,7 +8,7 @@
 
 ## 빠른 시작
 
-Python 3.10 이상, 추가 패키지·API 키 불필요.
+기본 작업대·평문 백업은 Python 3.10 이상이며 추가 패키지·API 키가 필요 없습니다. 선택적 암호화 기능은 별도 고정 의존성을 설치합니다.
 
 ```bash
 git clone https://github.com/KIMJINWOO0548/ax-change-rehearsal.git
@@ -51,6 +51,17 @@ python manage_recovery.py restore --source /private/ax-backup-001 --destination 
 
 백업과 복원은 새 전용 폴더에만 수행하며 기존 데이터는 덮어쓰지 않습니다. SQLite snapshot, 파일 checksum, schema와 ledger를 확인한 뒤 복원합니다. 백업도 평문이며 인증된 감사나 암호화가 아닙니다. 복원된 기록을 실제 승인으로 바꾸지 않습니다. [복구 훈련과 한계](docs/RECOVERY.md)를 먼저 확인하세요.
 
+### 선택적 암호화 사본
+
+```bash
+python -m pip install --require-hashes --only-binary=:all: -r requirements-encryption.txt
+python manage_sealed.py seal --source /private/ax-backup-001 --destination /private/ax-backup-001.axsealed
+python manage_sealed.py inspect --source /private/ax-backup-001.axsealed
+python manage_sealed.py restore --source /private/ax-backup-001.axsealed --destination /private/ax-restored-002
+```
+
+검증된 cryptography의 AES-256-GCM과 고정 scrypt로 **새 사본만** 암호화합니다. 비밀번호는 로컬 터미널에서 숨겨 입력하며 채팅·명령줄·환경변수·파일로 받거나 저장하지 않습니다. 암호문/내부 checksum 검사와 복원 후 전체 DB 검증을 구분합니다. 원본 DB·평문 백업·복원된 공간은 계속 평문이며, 비밀번호 분실 복구나 조직 키 관리는 제공하지 않습니다. [사용·복구 경계](docs/SEALED_BACKUPS.md)와 [의존성 검토](docs/DEPENDENCIES.md)를 먼저 확인하세요.
+
 이 서버는 로컬 컴퓨터의 합성 검증용입니다. 외부 네트워크에 공개하거나 운영 서버로 사용하지 마세요. 종료는 Ctrl+C입니다. 다른 포트는 `python serve_workbench.py --port 8766`으로 지정할 수 있습니다.
 
 서버 없이 읽는 오프라인 보고서도 지원합니다.
@@ -86,6 +97,7 @@ python run_workbench.py
 
 - `web/`: 정책 비교, 실행 설정, 사례별 근거와 JSON 내려받기를 제공하는 실제 작업 화면.
 - `rehearsal/app.py`, `server.py`: 고정된 정책 검토와 실제 모의 실행을 연결하는 로컬 HTTP API.
+- `rehearsal/sealed.py`, `manage_sealed.py`: 선택적 암호화 사본·숨김 비밀번호 입력·복원 검증.
 - `rehearsal/storage.py`, `replay.py`, `recovery.py`: 선택적 로컬 실행/검토 기록, 무결성 검사, 명시적 합성 재현과 검증 가능한 백업·복원.
 - `rehearsal/engine.py`: 전후 실행, 재호출 검사, 독립 상태 관찰, 판정.
 - `rehearsal/validation.py`: 구현된 합성 팩의 엄격한 입력 계약 검사.

@@ -12,7 +12,7 @@ Policy panels use the registered synthetic returns-policy text. Initial settings
 
 ## Executed checks (2026-11-08)
 
-- Windows, Python 3.12.10: 60 Python tests passed, including actual CRLF policy-file regression coverage; package validator, full demo, static workbench, and compileall passed.
+- Windows, Python 3.12.10: 61 Python tests passed, including actual CRLF policy-file regression coverage; package validator, full demo, static workbench, and compileall passed.
 - Node 24.22.1: syntax check and all 4 dependency-free DOM contract tests passed.
 - Installed Chrome with an ephemeral Playwright profile and the actual loopback HTTP server: all browser assertions passed. Covered initial state, stale/stale, FAQ-only correction, both corrected, keyboard detail opening, filtering, invalidation, JSON export, server failure and retry, duplicate submission, policy-review blocking, and no page errors.
 - Desktop viewport 1488 x 1058 and mobile viewport 390 x 844 screenshots were opened and visually inspected. Korean text, policy comparison, controls, results, evidence and raw-state blocks were readable. Navy navigation, teal action controls, cool-gray canvas and white document surfaces match the documented design system. This is a visual usability check, not a comprehensive accessibility audit.
@@ -24,7 +24,7 @@ Windows checkout line endings initially invalidated reviewed policy hashes and b
 
 At 390px, detail buttons initially wrapped Korean text one character per line. Non-wrapping buttons and a 520px table minimum width fix this without creating page-level horizontal overflow. The table remains independently scrollable.
 
-Windows CI also exposed a legacy cp1252 console failure when printing Korean stage titles. A subprocess regression reproduced the failure before the fix. The CLI now preserves the console encoding but escapes unsupported console characters; generated HTML and JSON remain lossless UTF-8. CI does not mask this with a UTF-8 environment override.
+Windows CI also exposed a legacy cp1252 console failure when printing Korean stage titles. Subprocess regressions reproduced the failure before the fix, including the full demo under a Korean-named project directory. Both demo CLIs now preserve the console encoding but escapes unsupported console characters; generated HTML and JSON remain lossless UTF-8. CI does not mask this with a UTF-8 environment override.
 
 ## Reproduction and limits
 

@@ -14,17 +14,22 @@ Python 3.10 이상, 추가 패키지·API 키 불필요.
 git clone https://github.com/KIMJINWOO0548/ax-change-rehearsal.git
 cd ax-change-rehearsal
 python -m unittest discover -s tests -v
+python serve_workbench.py
+```
+
+브라우저에서 **http://127.0.0.1:8765** 를 엽니다. 정책 원문과 변경된 줄을 확인하고, FAQ/API 버전을 각각 선택한 뒤 실제 리허설을 실행하세요. 사례별 응답·접수 상태·정책 근거와 원시 JSON을 확인할 수 있습니다. 설정을 바꾸면 이전 결과는 다시 실행하기 전까지 현재 결과로 표시되지 않습니다.
+
+이 서버는 로컬 컴퓨터의 합성 데모용입니다. 외부 네트워크에 공개하거나 운영 서버로 사용하지 마세요. 종료는 Ctrl+C입니다. 다른 포트는 `python serve_workbench.py --port 8766`으로 지정할 수 있습니다.
+
+서버 없이 읽는 오프라인 보고서도 지원합니다.
+
+```bash
 python tools/validate_package.py
+python run_demo.py
 python run_workbench.py
 ```
 
-생성된 `results/workbench/index.html`을 브라우저에서 엽니다. 인터넷이나 로컬 서버 없이 볼 수 있습니다. 원시 실행 근거는 같은 폴더의 `workbench.json`에 저장됩니다.
-
-전체 제조·금융·고객서비스 시나리오와 결함 주입 회귀를 실행하려면:
-
-```bash
-python run_demo.py
-```
+`results/workbench/index.html`을 브라우저에서 열면 정적 3단계 보고서를 볼 수 있습니다. 원시 근거는 `workbench.json`에 저장됩니다. `run_demo.py`는 제조·금융·고객서비스 전체와 결함 주입 회귀를 실행합니다.
 
 ## 데모에서 확인할 것
 
@@ -47,6 +52,8 @@ python run_demo.py
 
 ## 구조
 
+- `web/`: 정책 비교, 실행 설정, 사례별 근거와 JSON 내려받기를 제공하는 실제 작업 화면.
+- `rehearsal/app.py`, `server.py`: 고정된 정책 검토와 실제 모의 실행을 연결하는 로컬 HTTP API.
 - `rehearsal/engine.py`: 전후 실행, 재호출 검사, 독립 상태 관찰, 판정.
 - `rehearsal/validation.py`: 구현된 합성 팩의 엄격한 입력 계약 검사.
 - `rehearsal/adapters.py`: 세 업종의 모의 업무 규칙과 10가지 오류 주입.
@@ -62,7 +69,7 @@ python run_demo.py
 
 현재 정책 시행일은 `2026-12-01`이며 모의 어댑터가 구현한 규정에 한정됩니다. 임의의 새 시행일을 메타데이터만 바꿔 실행할 수 없습니다. 날짜별 정책을 확장하려면 어댑터·규정·독립 시나리오를 함께 검토해야 합니다.
 
-메모리 분리는 OS 보안 샌드박스가 아닙니다. 실제 API/DB 연결, 영속 실행·재개, 권한, 문서 파싱·의미 추출, 현업 정답 검증은 아직 구현하지 않았습니다. 자세한 상태는 [HANDOFF.md](HANDOFF.md), 검증 범위는 [VALIDATION.md](docs/VALIDATION.md)에 있습니다.
+메모리 분리는 OS 보안 샌드박스가 아닙니다. 실제 API/DB 연결, 영속 실행·재개, 사용자 인증·권한, 문서 파싱·의미 추출, 현업 정답 검증은 아직 구현하지 않았습니다. 정책 근거 위치는 수동 등록했으며 원문 hash가 바뀌면 작업대 실행을 막습니다. 로컬 요청 토큰은 다른 웹사이트의 요청을 차단하기 위한 장치이며 사용자 인증을 대신하지 않습니다. 자세한 상태는 [HANDOFF.md](HANDOFF.md), 검증 범위는 [VALIDATION.md](docs/VALIDATION.md)에 있습니다.
 
 ## 공개 범위와 라이선스
 

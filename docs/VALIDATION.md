@@ -76,3 +76,15 @@ python run_workbench.py
 FAQ/API 3단계 보고서는 실제 모의 실행 결과에서 만든다. 설정 검토 hash가 달라지면 FAQ 결과는 미확인으로 남는다. 설정 hash는 신원·권한 확인 수단이 아니다.
 
 로컬 Python 3.12에서 자동 검사를 실행했다. GitHub Actions의 다른 Python 버전 결과는 해당 commit의 실행 기록에서 확인해야 한다. HTML의 구조·escaping·데이터는 자동 검사했으나, 초기 클라우드 브라우저가 로컬 미리보기 서버에 연결하지 못해 시각적 브라우저 검증은 수행하지 못했다.
+
+## 0.3.0 로컬 작업대
+
+Python 테스트에는 실제 loopback HTTP 서버를 띄워 실행하는 통합 검사가 포함된다. 네 가지 FAQ/API 설정 조합과 정책 근거·문서 변경 검토 무효화, Host·Origin·Fetch Metadata·CSRF·중복 헤더·본문 크기·잘못된 JSON·임의 파일 경로를 검사한다.
+
+```bash
+python -m unittest discover -s tests -v
+node --check web/app.js
+node --test tests/frontend/state.test.cjs
+```
+
+Node는 애플리케이션 실행 의존성이 아니라 프런트엔드 개발 검사용이다. 정식 브라우저 검사는 `tests/frontend/workbench.cjs`로 별도 수행하며, 실제로 실행한 범위는 `docs/design/frontend-qa.md`에 기록한다.

@@ -10,27 +10,22 @@ Private image-generated concept reviewed before implementation: navy fixed left 
 
 The concept's invented privacy-retention paragraph is intentionally replaced by actual registered returns-policy text. The concept's initially selected corrected settings are intentionally replaced by backend defaults (stale/stale). Icons in the concept's navigation are replaced by useful step numbers instead of importing an icon library. Additional required workflow controls are JSON download, verdict filtering, sources/hash disclosure, limitations and actual-state evidence details. These are functional additions, not marketing content.
 
-## Executed checks
+## Executed checks (2026-11-08)
 
-- `node --check web/app.js`: passed.
-- `node --test tests/frontend/state.test.cjs`: 4 passed. Dependency-free VM/DOM contract checks cover CSRF and exact request body, duplicate request prevention, busy controls, setting invalidation, failure and retry, stale response rejection, policy-review blocking, and no dynamic HTML/external asset references.
-- These checks do not verify browser rendering, computed CSS, downloads, keyboard behavior, or actual HTTP integration.
+- Windows, Python 3.12.10: 59 Python tests passed, including actual CRLF policy-file regression coverage; package validator, full demo, static workbench, and compileall passed.
+- Node 24.22.1: syntax check and all 4 dependency-free DOM contract tests passed.
+- Installed Chrome with an ephemeral Playwright profile and the actual loopback HTTP server: all browser assertions passed. Covered initial state, stale/stale, FAQ-only correction, both corrected, keyboard detail opening, filtering, invalidation, JSON export, server failure and retry, duplicate submission, policy-review blocking, and no page errors.
+- Desktop viewport 1488 x 1058 and mobile viewport 390 x 844 screenshots were opened and visually inspected. Korean text, policy comparison, controls, results, evidence and raw-state blocks were readable. Navy navigation, teal action controls, cool-gray canvas and white document surfaces match the documented design system. This is not a pixel-perfect comparison to the private concept or a comprehensive accessibility audit.
+- Narrow results tables now retain horizontal scrolling, with a focusable labeled region and visible keyboard/scroll guidance. The detail button stays on one line with an 88px minimum width. A new regression first failed against the old CSS, then passed after the fix: width >=84px, height <=46px, and full button visibility within the scroll container after scrolling. Mobile screenshots were inspected at the detail-column scroll position.
 
-## Browser QA pending
+## Issues found and corrected
 
-Browser/IAB was attempted first against the local server and returned `net::ERR_CONNECTION_REFUSED`. Installed Playwright/Chromium was then attempted as a fallback. Chromium could not start because `socket() failed: Operation not permitted`; an approved escalated attempt had the same runtime failure. Neither attempt produced an application screenshot. The concept was viewed, but concept-to-browser comparison is **not complete** and no 10/10 visual-fidelity claim is made.
+Windows checkout line endings initially invalidated reviewed policy hashes and blocked normal runs. Policy hashing now declares UTF-8/LF canonicalization, normalizing CRLF and CR only; other text changes still invalidate review. The Windows regression and the existing changed-policy guard both pass.
 
-`tests/frontend/workbench.cjs` is ready to run in a browser-capable environment with an already installed Playwright and Chromium. Start `python serve_workbench.py --port 8765`; run `node tests/frontend/workbench.cjs`. Override `CHROMIUM_PATH` or `WORKBENCH_URL` if needed. QA screenshots are written to a new system temporary directory (or QA_OUTPUT_DIR), outside the repository and not shipped. Set CHROMIUM_PATH for an installed browser and PLAYWRIGHT_MODULE_PATH if Playwright is installed outside the project.
+At 390px, detail buttons initially wrapped Korean text one character per line. Non-wrapping buttons and a 520px table minimum width fix this without creating page-level horizontal overflow. The table remains independently scrollable.
 
-The script covers initial state, stale/stale, corrected FAQ only, both corrected, keyboard detail opening, filters, configuration invalidation, error then retry, duplicate click, policy-review block, JSON download, 390px overflow check and page errors. Browser assertions remain unexecuted here.
+## Reproduction and limits
 
-## Visual comparison ledger to finish
+Start `python serve_workbench.py --port 8765`, then run `node tests/frontend/workbench.cjs` with an already installed Playwright and Chromium. Override CHROMIUM_PATH, PLAYWRIGHT_MODULE_PATH or WORKBENCH_URL when needed. Screenshots go to a new system temporary directory or QA_OUTPUT_DIR, never the public repository.
 
-1. Layout: left navy rail and document-led section order match the concept in code; actual rendered spacing remains unverified.
-2. Palette: same navy/teal/cool-gray token family, no gradients or imagery; rendered color comparison pending.
-3. Typography: intentional system Korean fallback with explicit sizes; real Korean font legibility and line breaks pending.
-4. Copy: navigation, title, subtitle, three sections and primary CTA preserved; actual policy and backend status replace concept sample content.
-5. Container model: two document columns, compact settings and true results table, no marketing card grid; browser comparison pending.
-6. Responsive: <=760px stacks rail/content and documents, table has its own scroll container; 390px render and keyboard focus checks pending.
-
-Do not call the UI visually verified until a real desktop and narrow viewport have been inspected alongside the concept. Validate the long raw state blocks remain usable and selected case focus is visible.
+Cloud browser attempts previously failed because the local browser/server runtime was unavailable; the successful Windows browser run supersedes that pending status. CI covers Ubuntu and Windows with Python 3.10 through 3.13 (eight jobs). Exact CI outcomes are recorded in GitHub Actions for each commit; browser QA remains an explicitly run local check rather than a CI claim. No real enterprise data, external service or LLM performance was tested.

@@ -1,0 +1,426 @@
+{
+  "schema_version": "1.0",
+  "pack_id": "finance",
+  "title": "가상 수수료 면제 조건 변경",
+  "provenance": "authored_synthetic_example",
+  "expert_reviewed": false,
+  "effective_date": "2026-12-01",
+  "timezone": "Asia/Seoul",
+  "baseline_artifact": "baseline_v1",
+  "candidate_artifact": "candidate_v2",
+  "source_documents": {
+    "before": "policy_before.md",
+    "after": "policy_after.md"
+  },
+  "input_fields": {
+    "customer_id": "string",
+    "customer_type": "string",
+    "product_id": "string",
+    "region": "string",
+    "assessment_date": "date",
+    "monthly_recognized_spend_krw": "nonnegative_integer",
+    "vip": "boolean"
+  },
+  "rules_authority": "source_documents_after_manual_review",
+  "cases": [
+    {
+      "id": "F01",
+      "label": "시행 전 40만원",
+      "business_input": {
+        "customer_id": "synthetic_customer_01",
+        "customer_type": "personal",
+        "product_id": "P1",
+        "region": "KR",
+        "assessment_date": "2026-11-30",
+        "monthly_recognized_spend_krw": 400000,
+        "vip": false
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "CHARGED",
+        "state_delta": {
+          "table": "ledger_entries",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "CHARGED",
+        "state_delta": {
+          "table": "ledger_entries",
+          "count": 0
+        }
+      },
+      "intended_behavior": "PRESERVE",
+      "tags": [
+        "effective_date",
+        "preserve"
+      ]
+    },
+    {
+      "id": "F02",
+      "label": "새 기준 직전",
+      "business_input": {
+        "customer_id": "synthetic_customer_01",
+        "customer_type": "personal",
+        "product_id": "P1",
+        "region": "KR",
+        "assessment_date": "2026-12-01",
+        "monthly_recognized_spend_krw": 299999,
+        "vip": false
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "CHARGED",
+        "state_delta": {
+          "table": "ledger_entries",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "CHARGED",
+        "state_delta": {
+          "table": "ledger_entries",
+          "count": 0
+        }
+      },
+      "intended_behavior": "PRESERVE",
+      "tags": [
+        "boundary"
+      ]
+    },
+    {
+      "id": "F03",
+      "label": "30만원 경계",
+      "business_input": {
+        "customer_id": "synthetic_customer_01",
+        "customer_type": "personal",
+        "product_id": "P1",
+        "region": "KR",
+        "assessment_date": "2026-12-01",
+        "monthly_recognized_spend_krw": 300000,
+        "vip": false
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "CHARGED",
+        "state_delta": {
+          "table": "ledger_entries",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "WAIVED",
+        "state_delta": {
+          "table": "ledger_entries",
+          "count": 0
+        }
+      },
+      "intended_behavior": "CHANGE",
+      "tags": [
+        "boundary",
+        "change"
+      ]
+    },
+    {
+      "id": "F04",
+      "label": "30만원 직후",
+      "business_input": {
+        "customer_id": "synthetic_customer_01",
+        "customer_type": "personal",
+        "product_id": "P1",
+        "region": "KR",
+        "assessment_date": "2026-12-01",
+        "monthly_recognized_spend_krw": 300001,
+        "vip": false
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "CHARGED",
+        "state_delta": {
+          "table": "ledger_entries",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "WAIVED",
+        "state_delta": {
+          "table": "ledger_entries",
+          "count": 0
+        }
+      },
+      "intended_behavior": "CHANGE",
+      "tags": [
+        "boundary",
+        "change"
+      ]
+    },
+    {
+      "id": "F05",
+      "label": "50만원 직전",
+      "business_input": {
+        "customer_id": "synthetic_customer_01",
+        "customer_type": "personal",
+        "product_id": "P1",
+        "region": "KR",
+        "assessment_date": "2026-12-01",
+        "monthly_recognized_spend_krw": 499999,
+        "vip": false
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "CHARGED",
+        "state_delta": {
+          "table": "ledger_entries",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "WAIVED",
+        "state_delta": {
+          "table": "ledger_entries",
+          "count": 0
+        }
+      },
+      "intended_behavior": "CHANGE",
+      "tags": [
+        "change"
+      ]
+    },
+    {
+      "id": "F06",
+      "label": "50만원은 모두 면제",
+      "business_input": {
+        "customer_id": "synthetic_customer_01",
+        "customer_type": "personal",
+        "product_id": "P1",
+        "region": "KR",
+        "assessment_date": "2026-12-01",
+        "monthly_recognized_spend_krw": 500000,
+        "vip": false
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "WAIVED",
+        "state_delta": {
+          "table": "ledger_entries",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "WAIVED",
+        "state_delta": {
+          "table": "ledger_entries",
+          "count": 0
+        }
+      },
+      "intended_behavior": "PRESERVE",
+      "tags": [
+        "preserve"
+      ]
+    },
+    {
+      "id": "F07",
+      "label": "VIP는 실적 0도 면제",
+      "business_input": {
+        "customer_id": "synthetic_customer_01",
+        "customer_type": "personal",
+        "product_id": "P1",
+        "region": "KR",
+        "assessment_date": "2026-12-01",
+        "monthly_recognized_spend_krw": 0,
+        "vip": true
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "WAIVED",
+        "state_delta": {
+          "table": "ledger_entries",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "WAIVED",
+        "state_delta": {
+          "table": "ledger_entries",
+          "count": 0
+        }
+      },
+      "intended_behavior": "PRESERVE",
+      "tags": [
+        "exception"
+      ]
+    },
+    {
+      "id": "F08",
+      "label": "사업자 지원 범위 밖",
+      "business_input": {
+        "customer_id": "synthetic_customer_01",
+        "customer_type": "business",
+        "product_id": "P1",
+        "region": "KR",
+        "assessment_date": "2026-12-01",
+        "monthly_recognized_spend_krw": 600000,
+        "vip": false
+      },
+      "expected_before": {
+        "status": "UNSUPPORTED",
+        "decision": "UNSUPPORTED",
+        "state_delta": {
+          "table": "ledger_entries",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "UNSUPPORTED",
+        "decision": "UNSUPPORTED",
+        "state_delta": {
+          "table": "ledger_entries",
+          "count": 0
+        }
+      },
+      "intended_behavior": "INDETERMINATE",
+      "tags": [
+        "scope"
+      ]
+    },
+    {
+      "id": "F09",
+      "label": "다른 상품 지원 범위 밖",
+      "business_input": {
+        "customer_id": "synthetic_customer_01",
+        "customer_type": "personal",
+        "product_id": "P2",
+        "region": "KR",
+        "assessment_date": "2026-12-01",
+        "monthly_recognized_spend_krw": 600000,
+        "vip": false
+      },
+      "expected_before": {
+        "status": "UNSUPPORTED",
+        "decision": "UNSUPPORTED",
+        "state_delta": {
+          "table": "ledger_entries",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "UNSUPPORTED",
+        "decision": "UNSUPPORTED",
+        "state_delta": {
+          "table": "ledger_entries",
+          "count": 0
+        }
+      },
+      "intended_behavior": "INDETERMINATE",
+      "tags": [
+        "scope"
+      ]
+    },
+    {
+      "id": "F10",
+      "label": "실적 0 일반 고객",
+      "business_input": {
+        "customer_id": "synthetic_customer_01",
+        "customer_type": "personal",
+        "product_id": "P1",
+        "region": "KR",
+        "assessment_date": "2026-12-01",
+        "monthly_recognized_spend_krw": 0,
+        "vip": false
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "CHARGED",
+        "state_delta": {
+          "table": "ledger_entries",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "CHARGED",
+        "state_delta": {
+          "table": "ledger_entries",
+          "count": 0
+        }
+      },
+      "intended_behavior": "PRESERVE",
+      "tags": [
+        "preserve"
+      ]
+    },
+    {
+      "id": "F11",
+      "label": "인정 실적 미확인",
+      "business_input": {
+        "customer_id": "synthetic_customer_01",
+        "customer_type": "personal",
+        "product_id": "P1",
+        "region": "KR",
+        "assessment_date": "2026-12-01",
+        "monthly_recognized_spend_krw": null,
+        "vip": false
+      },
+      "expected_before": {
+        "status": "NEEDS_INPUT",
+        "decision": "NEEDS_INPUT",
+        "state_delta": {
+          "table": "ledger_entries",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "NEEDS_INPUT",
+        "decision": "NEEDS_INPUT",
+        "state_delta": {
+          "table": "ledger_entries",
+          "count": 0
+        }
+      },
+      "intended_behavior": "INDETERMINATE",
+      "tags": [
+        "missing"
+      ]
+    },
+    {
+      "id": "F12",
+      "label": "음수 인정 실적",
+      "business_input": {
+        "customer_id": "synthetic_customer_01",
+        "customer_type": "personal",
+        "product_id": "P1",
+        "region": "KR",
+        "assessment_date": "2026-12-01",
+        "monthly_recognized_spend_krw": -1,
+        "vip": false
+      },
+      "expected_before": {
+        "status": "INVALID_INPUT",
+        "decision": "INVALID_INPUT",
+        "state_delta": {
+          "table": "ledger_entries",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "INVALID_INPUT",
+        "decision": "INVALID_INPUT",
+        "state_delta": {
+          "table": "ledger_entries",
+          "count": 0
+        }
+      },
+      "intended_behavior": "INDETERMINATE",
+      "tags": [
+        "invalid"
+      ]
+    }
+  ]
+}

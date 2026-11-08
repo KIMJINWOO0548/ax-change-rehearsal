@@ -1,0 +1,14 @@
+{
+  "content": {
+    "region": "KR",
+    "effective_date": "2026-12-01",
+    "old_window_days": 14,
+    "new_window_days": 30
+  },
+  "review": {
+    "status": "REVIEWED_SYNTHETIC",
+    "reviewer": "synthetic_demo_author",
+    "content_sha256": "1fd62a80ba0995322df907440f07df256ef1211660c3b509896c4cdfd9c1d517",
+    "scope": "구조화된 합성 FAQ 설정만 검토. 실제 전문가 승인 아님."
+  }
+}

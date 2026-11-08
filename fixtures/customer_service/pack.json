@@ -1,0 +1,415 @@
+{
+  "schema_version": "1.0",
+  "pack_id": "customer_service",
+  "title": "가상 반품 기간 변경",
+  "provenance": "authored_synthetic_example",
+  "expert_reviewed": false,
+  "effective_date": "2026-12-01",
+  "timezone": "Asia/Seoul",
+  "baseline_artifact": "baseline_v1",
+  "candidate_artifact": "candidate_v2",
+  "source_documents": {
+    "before": "policy_before.md",
+    "after": "policy_after.md"
+  },
+  "input_fields": {
+    "order_id": "string",
+    "region": "string",
+    "delivered_on": "date",
+    "elapsed_days": "nonnegative_integer",
+    "opened": "boolean",
+    "custom_made": "boolean"
+  },
+  "rules_authority": "source_documents_after_manual_review",
+  "cases": [
+    {
+      "id": "S01",
+      "label": "기존 배송 건 20일",
+      "business_input": {
+        "order_id": "synthetic_order_01",
+        "region": "KR",
+        "delivered_on": "2026-11-30",
+        "elapsed_days": 20,
+        "opened": false,
+        "custom_made": false
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "INELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "INELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "intended_behavior": "PRESERVE",
+      "tags": [
+        "grandfathered",
+        "preserve"
+      ]
+    },
+    {
+      "id": "S02",
+      "label": "14일 경계",
+      "business_input": {
+        "order_id": "synthetic_order_01",
+        "region": "KR",
+        "delivered_on": "2026-12-01",
+        "elapsed_days": 14,
+        "opened": false,
+        "custom_made": false
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "ELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 1
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "ELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 1
+        }
+      },
+      "intended_behavior": "PRESERVE",
+      "tags": [
+        "boundary",
+        "preserve"
+      ]
+    },
+    {
+      "id": "S03",
+      "label": "15일은 신규 정책에서 허용",
+      "business_input": {
+        "order_id": "synthetic_order_01",
+        "region": "KR",
+        "delivered_on": "2026-12-01",
+        "elapsed_days": 15,
+        "opened": false,
+        "custom_made": false
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "INELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "ELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 1
+        }
+      },
+      "intended_behavior": "CHANGE",
+      "tags": [
+        "boundary",
+        "change"
+      ]
+    },
+    {
+      "id": "S04",
+      "label": "20일 미개봉 상품: 주 시연 사례",
+      "business_input": {
+        "order_id": "synthetic_order_01",
+        "region": "KR",
+        "delivered_on": "2026-12-01",
+        "elapsed_days": 20,
+        "opened": false,
+        "custom_made": false
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "INELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "ELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 1
+        }
+      },
+      "intended_behavior": "CHANGE",
+      "tags": [
+        "change"
+      ]
+    },
+    {
+      "id": "S05",
+      "label": "30일 마지막 허용일",
+      "business_input": {
+        "order_id": "synthetic_order_01",
+        "region": "KR",
+        "delivered_on": "2026-12-01",
+        "elapsed_days": 30,
+        "opened": false,
+        "custom_made": false
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "INELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "ELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 1
+        }
+      },
+      "intended_behavior": "CHANGE",
+      "tags": [
+        "boundary",
+        "change"
+      ]
+    },
+    {
+      "id": "S06",
+      "label": "31일 거절",
+      "business_input": {
+        "order_id": "synthetic_order_01",
+        "region": "KR",
+        "delivered_on": "2026-12-01",
+        "elapsed_days": 31,
+        "opened": false,
+        "custom_made": false
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "INELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "INELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "intended_behavior": "PRESERVE",
+      "tags": [
+        "boundary"
+      ]
+    },
+    {
+      "id": "S07",
+      "label": "주문제작 예외",
+      "business_input": {
+        "order_id": "synthetic_order_01",
+        "region": "KR",
+        "delivered_on": "2026-12-01",
+        "elapsed_days": 20,
+        "opened": false,
+        "custom_made": true
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "INELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "INELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "intended_behavior": "PRESERVE",
+      "tags": [
+        "exception"
+      ]
+    },
+    {
+      "id": "S08",
+      "label": "개봉 예외",
+      "business_input": {
+        "order_id": "synthetic_order_01",
+        "region": "KR",
+        "delivered_on": "2026-12-01",
+        "elapsed_days": 20,
+        "opened": true,
+        "custom_made": false
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "INELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "INELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "intended_behavior": "PRESERVE",
+      "tags": [
+        "exception"
+      ]
+    },
+    {
+      "id": "S09",
+      "label": "29일 마지막 경계 직전",
+      "business_input": {
+        "order_id": "synthetic_order_01",
+        "region": "KR",
+        "delivered_on": "2026-12-01",
+        "elapsed_days": 29,
+        "opened": false,
+        "custom_made": false
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "INELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "ELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 1
+        }
+      },
+      "intended_behavior": "CHANGE",
+      "tags": [
+        "boundary",
+        "change"
+      ]
+    },
+    {
+      "id": "S10",
+      "label": "해외 주문 범위 밖",
+      "business_input": {
+        "order_id": "synthetic_order_01",
+        "region": "US",
+        "delivered_on": "2026-12-01",
+        "elapsed_days": 20,
+        "opened": false,
+        "custom_made": false
+      },
+      "expected_before": {
+        "status": "UNSUPPORTED",
+        "decision": "UNSUPPORTED",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "UNSUPPORTED",
+        "decision": "UNSUPPORTED",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "intended_behavior": "INDETERMINATE",
+      "tags": [
+        "scope"
+      ]
+    },
+    {
+      "id": "S11",
+      "label": "배송 완료일 미확인",
+      "business_input": {
+        "order_id": "synthetic_order_01",
+        "region": "KR",
+        "delivered_on": null,
+        "elapsed_days": 20,
+        "opened": false,
+        "custom_made": false
+      },
+      "expected_before": {
+        "status": "NEEDS_INPUT",
+        "decision": "NEEDS_INPUT",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "NEEDS_INPUT",
+        "decision": "NEEDS_INPUT",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "intended_behavior": "INDETERMINATE",
+      "tags": [
+        "missing"
+      ]
+    },
+    {
+      "id": "S12",
+      "label": "음수 경과일",
+      "business_input": {
+        "order_id": "synthetic_order_01",
+        "region": "KR",
+        "delivered_on": "2026-12-01",
+        "elapsed_days": -1,
+        "opened": false,
+        "custom_made": false
+      },
+      "expected_before": {
+        "status": "INVALID_INPUT",
+        "decision": "INVALID_INPUT",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "INVALID_INPUT",
+        "decision": "INVALID_INPUT",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "intended_behavior": "INDETERMINATE",
+      "tags": [
+        "invalid"
+      ]
+    }
+  ]
+}

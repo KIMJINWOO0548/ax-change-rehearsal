@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+.env
+.env.*
+!.env.example
+.DS_Store
+results/*.json
+results/workbench/
+MANIFEST.json
+VALIDATION_RESULT.json

@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ax-change-rehearsal:domain-pack:1.0",
+  "title": "Synthetic domain pack",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "pack_id",
+    "title",
+    "provenance",
+    "expert_reviewed",
+    "effective_date",
+    "timezone",
+    "baseline_artifact",
+    "candidate_artifact",
+    "source_documents",
+    "input_fields",
+    "rules_authority",
+    "cases"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "pack_id": {
+      "enum": [
+        "manufacturing",
+        "finance",
+        "customer_service"
+      ]
+    },
+    "title": {
+      "type": "string"
+    },
+    "provenance": {
+      "const": "authored_synthetic_example"
+    },
+    "expert_reviewed": {
+      "const": false
+    },
+    "effective_date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "timezone": {
+      "const": "Asia/Seoul"
+    },
+    "baseline_artifact": {
+      "const": "baseline_v1"
+    },
+    "candidate_artifact": {
+      "const": "candidate_v2"
+    },
+    "source_documents": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "before",
+        "after"
+      ],
+      "properties": {
+        "before": {
+          "type": "string"
+        },
+        "after": {
+          "type": "string"
+        }
+      }
+    },
+    "input_fields": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "enum": [
+          "string",
+          "date",
+          "nonnegative_integer",
+          "boolean"
+        ]
+      }
+    },
+    "rules_authority": {
+      "const": "source_documents_after_manual_review"
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/case"
+      }
+    }
+  },
+  "$defs": {
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "decision",
+        "state_delta"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "DECIDED",
+            "NEEDS_INPUT",
+            "INVALID_INPUT",
+            "UNSUPPORTED"
+          ]
+        },
+        "decision": {
+          "enum": [
+            "DUE",
+            "NOT_DUE",
+            "WAIVED",
+            "CHARGED",
+            "ELIGIBLE",
+            "INELIGIBLE",
+            "NEEDS_INPUT",
+            "INVALID_INPUT",
+            "UNSUPPORTED"
+          ]
+        },
+        "state_delta": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "table",
+            "count"
+          ],
+          "properties": {
+            "table": {
+              "enum": [
+                "work_orders",
+                "ledger_entries",
+                "return_requests"
+              ]
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "business_input",
+        "expected_before",
+        "expected_after",
+        "intended_behavior",
+        "tags"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[MFS][0-9]{2}$"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "business_input": {
+          "type": "object"
+        },
+        "expected_before": {
+          "$ref": "#/$defs/expected"
+        },
+        "expected_after": {
+          "$ref": "#/$defs/expected"
+        },
+        "intended_behavior": {
+          "enum": [
+            "CHANGE",
+            "PRESERVE",
+            "INDETERMINATE"
+          ]
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

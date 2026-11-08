@@ -1,0 +1,415 @@
+{
+  "schema_version": "1.0",
+  "pack_id": "manufacturing",
+  "title": "가상 점검 주기 변경",
+  "provenance": "authored_synthetic_example",
+  "expert_reviewed": false,
+  "effective_date": "2026-12-01",
+  "timezone": "Asia/Seoul",
+  "baseline_artifact": "baseline_v1",
+  "candidate_artifact": "candidate_v2",
+  "source_documents": {
+    "before": "policy_before.md",
+    "after": "policy_after.md"
+  },
+  "input_fields": {
+    "equipment_id": "string",
+    "equipment_group": "string",
+    "mode": "string",
+    "region": "string",
+    "assessment_date": "date",
+    "hours_since_inspection": "nonnegative_integer"
+  },
+  "rules_authority": "source_documents_after_manual_review",
+  "cases": [
+    {
+      "id": "M01",
+      "label": "시행 전 일반 장비",
+      "business_input": {
+        "equipment_id": "synthetic_unit_01",
+        "equipment_group": "A",
+        "mode": "normal",
+        "region": "KR",
+        "assessment_date": "2026-11-30",
+        "hours_since_inspection": 90
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "NOT_DUE",
+        "state_delta": {
+          "table": "work_orders",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "NOT_DUE",
+        "state_delta": {
+          "table": "work_orders",
+          "count": 0
+        }
+      },
+      "intended_behavior": "PRESERVE",
+      "tags": [
+        "effective_date",
+        "preserve"
+      ]
+    },
+    {
+      "id": "M02",
+      "label": "새 기준 직전 79시간",
+      "business_input": {
+        "equipment_id": "synthetic_unit_01",
+        "equipment_group": "A",
+        "mode": "normal",
+        "region": "KR",
+        "assessment_date": "2026-12-01",
+        "hours_since_inspection": 79
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "NOT_DUE",
+        "state_delta": {
+          "table": "work_orders",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "NOT_DUE",
+        "state_delta": {
+          "table": "work_orders",
+          "count": 0
+        }
+      },
+      "intended_behavior": "PRESERVE",
+      "tags": [
+        "boundary"
+      ]
+    },
+    {
+      "id": "M03",
+      "label": "새 기준 경계 80시간",
+      "business_input": {
+        "equipment_id": "synthetic_unit_01",
+        "equipment_group": "A",
+        "mode": "normal",
+        "region": "KR",
+        "assessment_date": "2026-12-01",
+        "hours_since_inspection": 80
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "NOT_DUE",
+        "state_delta": {
+          "table": "work_orders",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "DUE",
+        "state_delta": {
+          "table": "work_orders",
+          "count": 1
+        }
+      },
+      "intended_behavior": "CHANGE",
+      "tags": [
+        "boundary",
+        "change"
+      ]
+    },
+    {
+      "id": "M04",
+      "label": "새 기준 직후 81시간",
+      "business_input": {
+        "equipment_id": "synthetic_unit_01",
+        "equipment_group": "A",
+        "mode": "normal",
+        "region": "KR",
+        "assessment_date": "2026-12-01",
+        "hours_since_inspection": 81
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "NOT_DUE",
+        "state_delta": {
+          "table": "work_orders",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "DUE",
+        "state_delta": {
+          "table": "work_orders",
+          "count": 1
+        }
+      },
+      "intended_behavior": "CHANGE",
+      "tags": [
+        "boundary",
+        "change"
+      ]
+    },
+    {
+      "id": "M05",
+      "label": "이전 기준 직전 99시간",
+      "business_input": {
+        "equipment_id": "synthetic_unit_01",
+        "equipment_group": "A",
+        "mode": "normal",
+        "region": "KR",
+        "assessment_date": "2026-12-01",
+        "hours_since_inspection": 99
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "NOT_DUE",
+        "state_delta": {
+          "table": "work_orders",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "DUE",
+        "state_delta": {
+          "table": "work_orders",
+          "count": 1
+        }
+      },
+      "intended_behavior": "CHANGE",
+      "tags": [
+        "change"
+      ]
+    },
+    {
+      "id": "M06",
+      "label": "100시간은 모두 점검",
+      "business_input": {
+        "equipment_id": "synthetic_unit_01",
+        "equipment_group": "A",
+        "mode": "normal",
+        "region": "KR",
+        "assessment_date": "2026-12-01",
+        "hours_since_inspection": 100
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "DUE",
+        "state_delta": {
+          "table": "work_orders",
+          "count": 1
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "DUE",
+        "state_delta": {
+          "table": "work_orders",
+          "count": 1
+        }
+      },
+      "intended_behavior": "PRESERVE",
+      "tags": [
+        "preserve"
+      ]
+    },
+    {
+      "id": "M07",
+      "label": "장비군 B 119시간",
+      "business_input": {
+        "equipment_id": "synthetic_unit_01",
+        "equipment_group": "B",
+        "mode": "normal",
+        "region": "KR",
+        "assessment_date": "2026-12-01",
+        "hours_since_inspection": 119
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "NOT_DUE",
+        "state_delta": {
+          "table": "work_orders",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "NOT_DUE",
+        "state_delta": {
+          "table": "work_orders",
+          "count": 0
+        }
+      },
+      "intended_behavior": "PRESERVE",
+      "tags": [
+        "exception"
+      ]
+    },
+    {
+      "id": "M08",
+      "label": "장비군 B 120시간",
+      "business_input": {
+        "equipment_id": "synthetic_unit_01",
+        "equipment_group": "B",
+        "mode": "normal",
+        "region": "KR",
+        "assessment_date": "2026-12-01",
+        "hours_since_inspection": 120
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "DUE",
+        "state_delta": {
+          "table": "work_orders",
+          "count": 1
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "DUE",
+        "state_delta": {
+          "table": "work_orders",
+          "count": 1
+        }
+      },
+      "intended_behavior": "PRESERVE",
+      "tags": [
+        "exception",
+        "boundary"
+      ]
+    },
+    {
+      "id": "M09",
+      "label": "장비군 A 특수 운전 60시간",
+      "business_input": {
+        "equipment_id": "synthetic_unit_01",
+        "equipment_group": "A",
+        "mode": "special",
+        "region": "KR",
+        "assessment_date": "2026-12-01",
+        "hours_since_inspection": 60
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "DUE",
+        "state_delta": {
+          "table": "work_orders",
+          "count": 1
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "DUE",
+        "state_delta": {
+          "table": "work_orders",
+          "count": 1
+        }
+      },
+      "intended_behavior": "PRESERVE",
+      "tags": [
+        "exception"
+      ]
+    },
+    {
+      "id": "M10",
+      "label": "장비군 A 특수 운전 59시간",
+      "business_input": {
+        "equipment_id": "synthetic_unit_01",
+        "equipment_group": "A",
+        "mode": "special",
+        "region": "KR",
+        "assessment_date": "2026-12-01",
+        "hours_since_inspection": 59
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "NOT_DUE",
+        "state_delta": {
+          "table": "work_orders",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "NOT_DUE",
+        "state_delta": {
+          "table": "work_orders",
+          "count": 0
+        }
+      },
+      "intended_behavior": "PRESERVE",
+      "tags": [
+        "exception",
+        "boundary"
+      ]
+    },
+    {
+      "id": "M11",
+      "label": "운전시간 미확인",
+      "business_input": {
+        "equipment_id": "synthetic_unit_01",
+        "equipment_group": "A",
+        "mode": "normal",
+        "region": "KR",
+        "assessment_date": "2026-12-01",
+        "hours_since_inspection": null
+      },
+      "expected_before": {
+        "status": "NEEDS_INPUT",
+        "decision": "NEEDS_INPUT",
+        "state_delta": {
+          "table": "work_orders",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "NEEDS_INPUT",
+        "decision": "NEEDS_INPUT",
+        "state_delta": {
+          "table": "work_orders",
+          "count": 0
+        }
+      },
+      "intended_behavior": "INDETERMINATE",
+      "tags": [
+        "missing"
+      ]
+    },
+    {
+      "id": "M12",
+      "label": "음수 운전시간",
+      "business_input": {
+        "equipment_id": "synthetic_unit_01",
+        "equipment_group": "A",
+        "mode": "normal",
+        "region": "KR",
+        "assessment_date": "2026-12-01",
+        "hours_since_inspection": -1
+      },
+      "expected_before": {
+        "status": "INVALID_INPUT",
+        "decision": "INVALID_INPUT",
+        "state_delta": {
+          "table": "work_orders",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "INVALID_INPUT",
+        "decision": "INVALID_INPUT",
+        "state_delta": {
+          "table": "work_orders",
+          "count": 0
+        }
+      },
+      "intended_behavior": "INDETERMINATE",
+      "tags": [
+        "invalid"
+      ]
+    }
+  ]
+}

@@ -22,7 +22,8 @@ jobs:
       - name: Verify standard-library core without optional packages
         run: python -S -c "from rehearsal.server import make_server; from rehearsal.recovery import create_backup"
       - name: Install locked optional encryption wheels
-        run: python -m pip install --require-hashes --only-binary=:all: -r requirements-encryption.txt
+        run: |
+          python -m pip install --require-hashes --only-binary=:all: -r requirements-encryption.txt
       - run: python -m pip check
       - name: Require encrypted-backup capability on supported Python
         run: python -c "from rehearsal.sealed import check_support; check_support()"

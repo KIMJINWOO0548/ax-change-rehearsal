@@ -1,6 +1,8 @@
 """Product flow assertions remain separate from adapter/oracle implementation."""
 import importlib.util
 import unittest
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 
@@ -89,6 +91,20 @@ class InteractiveAppTests(unittest.TestCase):
         self.assertNotEqual(good['manifest_sha256'],invalid['manifest_sha256'])
         self.assertEqual(invalid['counts'],{'INCONCLUSIVE':12})
         self.assertTrue(all('FAQ' in case['reason'] and '검토' in case['reason'] for case in invalid['cases']))
+
+    def test_windows_newlines_preserve_reviewed_policy_identity(self):
+        app=self.require_app()
+        original=app.build_context()
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            for source in original['policy'].values():
+                path=root / source['path']
+                path.parent.mkdir(parents=True,exist_ok=True)
+                path.write_bytes(source['text'].replace('\n','\r\n').encode('utf-8'))
+            with patch('rehearsal.app.ROOT',root):
+                actual=app.build_context()
+        self.assertTrue(actual['policy_review_valid'])
+        self.assertEqual(actual['policy'],original['policy'])
 
     def test_configuration_is_strict(self):
         app=self.require_app()

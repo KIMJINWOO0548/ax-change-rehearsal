@@ -35,9 +35,12 @@ def _policy(pack: dict) -> dict:
     for side, relative in pack['source_documents'].items():
         path = ROOT / 'fixtures' / 'customer_service' / relative
         raw = path.read_bytes()
-        text = raw.decode('utf-8')
+        # Git and Windows editors may change only line endings. Canonicalize
+        # that representation, but preserve all other text for review invalidation.
+        text = raw.decode('utf-8').replace('\r\n', '\n').replace('\r', '\n')
         result[side] = {'path': path.relative_to(ROOT).as_posix(),
-                        'sha256': hashlib.sha256(raw).hexdigest(), 'text': text,
+                        'sha256': hashlib.sha256(text.encode('utf-8')).hexdigest(),
+                        'canonicalization': 'utf8_lf', 'text': text,
                         'lines': [{'number': n, 'text': line}
                                   for n, line in enumerate(text.splitlines(), 1)]}
     return result

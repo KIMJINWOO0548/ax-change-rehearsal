@@ -13,7 +13,7 @@ All endpoints are local and response-driven. Server binds 127.0.0.1 only.
 GET /api/context returns:
 - csrf_token (ephemeral per server process, no persistence)
 - project {name, synthetic_only, policy_title, effective_date, scenario_count}
-- policy {before, after}, each {path, sha256, text, lines:[{number,text}]}
+- policy {before, after}, each {path, sha256, canonicalization:"utf8_lf", text, lines:[{number,text}]}. Policy SHA-256 uses UTF-8 text with CRLF/CR normalized to LF; all other characters remain exact
 - change {old_window_days:14,new_window_days:30,effective_date:'2026-12-01', preserved:[...]}
 - cases [{id,label,intended_behavior,tags}]
 - defaults {faq_version:'stale',api_version:'stale'}

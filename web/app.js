@@ -4,7 +4,7 @@
   const $ = id => document.getElementById(id);
   const review = globalThis.RehearsalReview;
   const state = {context:null, result:null, busy:false, revision:0, request:0, selected:null,
-    stale:false, selectedIds:new Set(), history:[], comparison:null};
+    stale:false, error:false, selectedIds:new Set(), history:[], comparison:null};
   const labels = {PASS_WITHIN_SCOPE:'범위 내 통과', FAIL:'불일치', INCONCLUSIVE:'판정 보류',
     PASS:'통과', INCOMPLETE:'불완전', CHANGE:'변경 대상', PRESERVE:'유지 대상', INDETERMINATE:'판단 유보',
     IMPROVED:'해결됨', REGRESSED:'새 실패', PERSISTING:'실패 유지', UNVERIFIED:'미확인 포함', UNCHANGED:'통과 유지', CHECK_REGRESSION:'검사 회귀'};
@@ -29,6 +29,36 @@
       case_ids:review.orderedSelection(state.context.cases, state.selectedIds)};
   }
   function status(text, kind='') { $('run-status').textContent=text; $('run-status').className='notice '+kind; }
+  function renderWorkspace() {
+    const context=state.context, result=state.result;
+    let title='연결 확인 필요', next='정책과 사례를 불러온 뒤 실행할 수 있습니다.', target='policy', action='정책 확인으로 이동';
+    let tone='neutral';
+    if(context) {
+      const config=configuration(), version=v=>v==='corrected'?'변경 반영':'이전 정책';
+      $('workspace-scope').textContent=state.selectedIds.size+' / '+context.cases.length+'개'+(state.selectedIds.size===context.cases.length?' · 전체':' · 부분');
+      $('workspace-versions').textContent=version(config.faq_version)+' / '+version(config.api_version);
+      $('workspace-storage').textContent=context.storage?.enabled?'로컬 저장 켜짐':'이 탭에서만 확인';
+      title='실행 준비';next='선택한 사례와 FAQ·API 버전을 확인하고 리허설을 실행하세요.';target='configuration';action='실행 설정으로 이동';
+      if(context.policy_review_valid===false){title='정책 근거 재검토 필요';next='정책 원문이 변경되어 실행이 차단됐습니다.';target='policy';tone='error';action='변경 근거 확인';}
+      else if(state.busy){title='리허설 실행 중';next='모의 응답과 독립 관찰 상태를 확인하고 있습니다.';target='results';action='실행 상태 확인';}
+      else if(state.error){title='실행 확인 필요';next='완료되지 않은 실행입니다. 오류 내용을 확인한 뒤 다시 실행하세요.';target='results';tone='error';action='오류 내용 확인';}
+      else if(!state.selectedIds.size){title='실행할 사례를 선택하세요';next='검색 결과와 선택 범위는 별개입니다. 한 개 이상 선택해야 실행할 수 있습니다.';target='scenarios';tone='warning';action='사례 선택으로 이동';}
+      else if(state.stale){title='설정 변경 · 재실행 필요';next='이전 결과는 현재 선택 범위와 버전의 검증 결과가 아닙니다.';tone='warning';}
+      else if(result){
+        target='results';action='차이·근거 검토로 이동';
+        if(result.counts.FAIL){title='불일치 '+result.counts.FAIL+'건 · 수정 필요';next='FAQ·API 결과와 정책 근거를 확인한 뒤 같은 범위로 다시 실행하세요.';tone='error';}
+        else if(result.counts.INCONCLUSIVE){title='보류 '+result.counts.INCONCLUSIVE+'건 · 검토 필요';next='불일치가 없어도 입력 결측·범위 밖 사례는 통과가 아닙니다.';tone='warning';}
+        else if(!result.scope.complete){title='선택 범위만 검증됨';next='미실행 사례를 포함해 다시 실행해야 등록 범위 전체를 검토할 수 있습니다.';tone='warning';}
+        else {title='등록 범위 내 통과';next='합성 모의 실행 결과입니다. 실제 업무 적용이나 배포 승인을 뜻하지 않습니다.';tone='success';}
+      }
+    } else {
+      for(const id of ['workspace-scope','workspace-versions','workspace-storage'])$(id).textContent='확인되지 않음';
+    }
+    $('workspace-title').textContent=title;$('workspace-next').textContent=next;
+    $('workspace-action').textContent=action+' →';$('workspace-action').href='#'+target;
+    document.querySelector('.workspace-overview')?.setAttribute('data-tone',tone);
+    $('review-priority').disabled=!result||state.stale||state.busy;
+  }
   function availability() {
     const blocked=!state.context || state.context.policy_review_valid===false || state.busy;
     $('run').disabled=blocked || state.selectedIds.size===0;
@@ -38,6 +68,7 @@
     $('select-failed').disabled=!state.result || state.stale || state.busy || !state.result.cases.some(c=>c.business_verdict==='FAIL');
     $('compare-run').disabled=state.busy || state.history.length<2;
     $('results').setAttribute('aria-busy',String(state.busy));
+    renderWorkspace();
   }
   async function request(path, options={}) {
     const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),30000);
@@ -53,7 +84,7 @@
     } finally { clearTimeout(timer); }
   }
   function invalidate() {
-    state.revision++;
+    state.revision++;state.error=false;
     if(state.result) {state.stale=true;status('설정이 변경됐습니다. 아래는 이전 실행 결과입니다. 다시 실행해야 현재 범위를 검증할 수 있습니다.','warning');}
     availability();
   }
@@ -105,7 +136,7 @@
       if(!context.csrf_token || !context.policy?.before?.lines || !context.policy?.after?.lines ||
          !context.defaults || !context.project || !Array.isArray(context.cases) || !context.cases.length ||
          new Set(context.cases.map(c=>c.id)).size!==context.cases.length) throw new Error('정책 응답의 필수 정보가 없습니다.');
-      state.context=context;archive?.configure(context);
+      state.context=context;state.error=false;archive?.configure(context);
       for(const name of ['faq_version','api_version']) {
         const input=Array.from(document.querySelectorAll('input[name="'+name+'"]')).find(i=>i.value===context.defaults[name]);
         if(!input)throw new Error('지원되지 않는 기본 버전입니다.');input.checked=true;
@@ -199,8 +230,12 @@
     const result=state.result;$('result-content').hidden=false;$('case-detail').hidden=true;state.selected=null;
     $('summary').replaceChildren();
     for(const [name,count] of [['실행한 사례',result.total],['범위 내 통과',result.counts.PASS_WITHIN_SCOPE||0],['불일치',result.counts.FAIL||0],['판정 보류',result.counts.INCONCLUSIVE||0]]) {
-      const item=el('div',undefined,'summary-item');item.append(el('strong',count),el('span',name));$('summary').append(item);
+      const item=el('div',undefined,'summary-item');item.setAttribute('data-kind',name==='불일치'?'fail':name==='판정 보류'?'unknown':name==='범위 내 통과'?'pass':'total');item.append(el('strong',count),el('span',name));$('summary').append(item);
     }
+    const urgent=result.counts.FAIL?'FAIL':result.counts.INCONCLUSIVE?'INCONCLUSIVE':null;
+    $('review-priority').hidden=!urgent;
+    $('review-priority').textContent=urgent==='FAIL'?'불일치 근거부터 보기':'보류 근거부터 보기';
+    $('review-next-text').textContent=urgent==='FAIL'?'먼저 불일치 사례의 기대값·실제 응답·저장 상태를 대조하세요.':urgent==='INCONCLUSIVE'?'보류 사례의 누락 입력과 지원 범위를 확인하세요. 진단 검사 통과와 업무 통과는 다릅니다.':'선택 범위의 근거를 검토하고, 필요한 경우 로컬 검토 메모를 남기세요.';
     $('result-scope').textContent=result.scope.complete?'등록된 '+result.scope.registered_total+'개 사례 전체를 실행했습니다.':
       '부분 실행 '+result.scope.selected_total+' / '+result.scope.registered_total+'개. 미실행: '+result.scope.omitted_case_ids.join(', ')+'. 전체 범위를 검증한 결과가 아닙니다.';
     $('result-scope').className=result.scope.complete?'section-note':'notice warning';
@@ -240,7 +275,7 @@
     event.preventDefault();
     if(state.busy||!state.context||state.context.policy_review_valid===false)return;
     const config=configuration();if(!review.validSelection(state.context.cases,config.case_ids))return;
-    state.busy=true;const token=++state.request,revision=state.revision;availability();
+    state.busy=true;state.error=false;const token=++state.request,revision=state.revision;availability();
     status('선택한 시나리오의 응답과 저장 상태를 확인하고 있습니다.');if(state.result)state.stale=true;
     try {
       const result=await request('/api/run',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':state.context.csrf_token},body:JSON.stringify(config)});
@@ -249,7 +284,7 @@
       archive?.afterRun(result);
       state.history=[result,...state.history.filter(r=>r.run_id!==result.run_id)].slice(0,8);renderResult();
     } catch(error) {
-      if(token===state.request)status('실행하지 못했습니다. '+error.message+(state.result?' 아래는 이전 실행 결과이며 현재 결과가 아닙니다.':'')+' 다시 실행하세요.','error');
+      if(token===state.request){state.error=true;status('실행하지 못했습니다. '+error.message+(state.result?' 아래는 이전 실행 결과이며 현재 결과가 아닙니다.':'')+' 다시 실행하세요.','error');}
     } finally {if(token===state.request){state.busy=false;availability();}}
   }
   $('run-form').addEventListener('submit',run);$('run-form').addEventListener('change',invalidate);
@@ -266,6 +301,12 @@
   });
   for(const id of ['verdict-filter','change-filter']) $(id).addEventListener('change',()=>{state.selected=null;$('case-detail').hidden=true;renderRows();});
   $('compare-run').addEventListener('change',()=>{state.selected=null;$('case-detail').hidden=true;renderComparison();});
+  $('review-priority').addEventListener('click',()=>{
+    if($('review-priority').disabled)return;
+    const verdict=state.result.counts.FAIL?'FAIL':'INCONCLUSIVE';
+    $('verdict-filter').value=verdict;$('change-filter').value='all';
+    const item=state.result.cases.find(c=>c.business_verdict===verdict);if(item)showDetail(item);
+  });
   $('close-detail').addEventListener('click',()=>{
     const selected=state.selected;state.selected=null;$('case-detail').hidden=true;renderRows();
     const button=Array.from(document.querySelectorAll('#case-rows button')).find(b=>b.getAttribute('data-case-id')===selected);

@@ -25,7 +25,8 @@ test('payload pins evidence and revision; accepts literal text without HTML rend
  assert.throws(()=>archive.reviewPayload(record(),'REVIEWED','a'.repeat(1001)));
 });
 class Node{
- constructor(){this.handlers={};this.children=[];this.value='';}
+ constructor(){this.handlers={};this.children=[];this.value='';this.text='';}
+ set textContent(v){this.text=v;this.children=[];}get textContent(){return this.text+this.children.map(n=>n.textContent||'').join('');}
  addEventListener(k,fn){this.handlers[k]=fn;}setAttribute(){}focus(){}append(...n){this.children.push(...n);}replaceChildren(...n){this.children=n;}
 }
 const settle=()=>new Promise(r=>setImmediate(r));
@@ -95,4 +96,13 @@ test('pending detail read locks inputs and keeps their binding until response',a
  resolve(detail());await reading;
  assert.equal(a.nodes['archive-note'].disabled,false);assert.equal(a.nodes['archive-review-status'].disabled,false);
  assert.equal(a.nodes['archive-note'].value,'Retain this draft');
+});
+
+
+test('archive filter preserves full list and shows review status without interpreting notes',async()=>{
+ const a=setup();await a.start();assert.match(a.nodes['archive-list'].textContent,/2026년/);
+ a.nodes['archive-filter'].value='CHANGES_REQUESTED';a.nodes['archive-filter'].handlers.change();
+ assert.equal(a.nodes['archive-list'].children.length,0);assert.match(a.nodes['archive-filter-count'].textContent,/0 \/ 1개/);
+ a.nodes['archive-filter'].value='all';a.nodes['archive-filter'].handlers.change();assert.equal(a.nodes['archive-list'].children.length,1);
+ assert.match(a.nodes['archive-summary'].textContent,/부분|전체/);assert.match(a.nodes['archive-summary'].textContent,/이전 정책 \/ 변경 반영/);
 });

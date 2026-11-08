@@ -104,3 +104,25 @@ test('missing omitted cases cannot conceal unexecuted scope',async()=>{
  s.setNext(async()=>({ok:true,json:async()=>{const r=s.result();r.scope.omitted_case_ids=[];return r;}}));
  await s.run();assert.equal(s.ids.download.disabled,true);assert.match(s.ids['run-status'].textContent,/실행하지 못/);
 });
+
+
+test('workspace overview distinguishes ready, busy, failure, stale, empty and error states',async()=>{
+ const s=setup();await s.settle();assert.equal(s.ids['workspace-title'].textContent,'실행 준비');
+ assert.match(s.ids['workspace-scope'].textContent,/2 \/ 2개 · 전체/);
+ let resolve;s.setNext(()=>new Promise(r=>resolve=r));const pending=s.run();
+ assert.match(s.ids['workspace-title'].textContent,/실행 중/);resolve(s.good());await pending;
+ assert.match(s.ids['workspace-title'].textContent,/불일치 1건/);
+ s.ids['review-priority'].click();assert.equal(s.ids['verdict-filter'].value,'FAIL');assert.equal(s.ids['case-detail'].hidden,false);
+ s.change('faq_version','corrected');assert.match(s.ids['workspace-title'].textContent,/재실행 필요/);assert.equal(s.ids['review-priority'].disabled,true);
+ s.ids['select-none'].click();assert.match(s.ids['workspace-title'].textContent,/사례를 선택/);
+ s.ids['select-all'].click();s.setNext(async()=>({ok:false,json:async()=>({error:{message:'offline'}})}));await s.run();
+ assert.match(s.ids['workspace-title'].textContent,/실행 확인 필요/);
+});
+
+test('overview does not turn unknown or partial scope into approval',async()=>{
+ const s=setup();await s.settle();s.setNext(async()=>({ok:true,json:async()=>{const r=s.result();r.cases[0].business_verdict='PASS_WITHIN_SCOPE';r.counts={PASS_WITHIN_SCOPE:1,INCONCLUSIVE:1};r.readiness='REVIEW_REQUIRED';return r;}}));
+ await s.run();assert.match(s.ids['workspace-title'].textContent,/보류 1건/);assert.match(s.ids['review-priority'].textContent,/보류 근거/);
+ s.ids['review-priority'].click();assert.equal(s.ids['verdict-filter'].value,'INCONCLUSIVE');
+ s.ids['select-boundary'].click();s.setNext(async()=>({ok:true,json:async()=>{const r=s.result();r.cases[0].business_verdict='PASS_WITHIN_SCOPE';r.counts={PASS_WITHIN_SCOPE:1};r.readiness='PARTIAL_SCOPE';return r;}}));
+ await s.run();assert.equal(s.ids['workspace-title'].textContent,'선택 범위만 검증됨');assert.equal(s.ids['review-priority'].hidden,true);
+});

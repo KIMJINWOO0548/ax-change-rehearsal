@@ -19,7 +19,11 @@
   <p class="rail-foot">합성 데이터 · 로컬 실행<br><small>실제 고객 시스템에 쓰지 않습니다.</small></p>
 </aside>
 <main id="main">
-  <header class="page-header"><h1>정책 변경 리허설</h1><p>변경을 확인하고, 영향받는 사례부터 검증하세요.</p></header>
+  <header class="page-header"><div><p class="eyebrow">고객서비스 / 변경 검증 작업대</p><h1>정책 변경 리허설</h1><p>정책에서 처리 결과까지, 같은 변경이 반영됐는지 확인합니다.</p></div><span class="environment-tag">합성 데이터 · 로컬 파일럿</span></header>
+  <section class="workspace-overview" aria-labelledby="workspace-title">
+    <div class="workspace-state"><span class="eyebrow">현재 작업 상태</span><h2 id="workspace-title">준비 중</h2><p id="workspace-next">정책과 실행 범위를 확인하고 있습니다.</p><a id="workspace-action" class="text-action" href="#configuration">실행 설정으로 이동 →</a></div>
+    <dl class="workspace-facts"><div><dt>선택한 범위</dt><dd id="workspace-scope">확인 중</dd></div><div><dt>FAQ / API 설정</dt><dd id="workspace-versions">확인 중</dd></div><div><dt>실행 근거 보관</dt><dd id="workspace-storage">확인 중</dd></div></dl>
+  </section>
   <div id="connection" role="status" class="notice">정책과 시나리오를 불러오는 중입니다.</div>
   <button id="reload" class="secondary" hidden>다시 연결</button>
   <section id="policy" aria-labelledby="policy-title">
@@ -78,6 +82,7 @@
     <p id="run-status" class="notice" role="status" aria-live="polite">아직 리허설이 실행되지 않았습니다. 사례와 버전을 선택한 뒤 실행하세요.</p>
     <div id="result-content" hidden>
       <div id="summary" class="summary"></div>
+      <div class="review-next"><p id="review-next-text"></p><button id="review-priority" class="secondary" type="button">우선 검토 사례 열기</button></div>
       <p id="result-scope" class="section-note"></p>
       <details class="run-provenance"><summary>실행 식별자와 검증 근거</summary><p id="run-meta" class="mono meta"></p></details>
       <div class="comparison-bar">
@@ -92,7 +97,7 @@
         </select>
         <span id="visible-count"></span><button id="select-failed" type="button" class="secondary" disabled>실패 사례만 선택</button>
       </div>
-      <p id="table-scroll-help" class="section-note">좁은 화면에서는 표를 좌우로 스크롤하세요. 표에 키보드 초점을 두고 방향키로 이동할 수 있습니다.</p>
+      <p id="table-scroll-help" class="section-note">표를 좌우로 스크롤해 FAQ·API 검사를 비교하세요. 키보드로는 표에 초점을 두고 방향키를 사용하세요.</p>
       <div class="table-wrap" tabindex="0" role="region" aria-label="시나리오 결과 표" aria-describedby="table-scroll-help">
         <table><caption class="sr-only">시나리오별 FAQ·API 검증과 업무 판정</caption><thead><tr>
           <th scope="col">시나리오</th><th scope="col">FAQ</th><th scope="col">API</th><th scope="col">업무 판정</th><th scope="col">이전 대비</th><th scope="col">근거</th>
@@ -114,11 +119,13 @@
     <p id="archive-mode" class="notice">로컬 저장 설정을 확인하는 중입니다.</p>
     <p class="section-note">합성 자료 전용입니다. 로그인·권한 분리·암호화·실제 시스템 연결은 제공하지 않습니다. 검토 메모는 신원 확인, 승인, 전자서명 또는 배포 허가가 아닙니다.</p>
     <p id="archive-status" role="status" aria-live="polite" class="section-note"></p>
+    <div class="archive-filters"><label for="archive-filter">검토 표시<select id="archive-filter"><option value="all">전체 기록</option><option value="UNREVIEWED">미검토</option><option value="CHANGES_REQUESTED">수정 요청</option><option value="REVIEWED">검토함 · 승인 아님</option></select></label><p id="archive-filter-count" role="status"></p></div>
     <ul id="archive-list" class="archive-list" aria-label="저장된 합성 실행"></ul>
     <section id="archive-detail" class="inspector" hidden tabindex="-1" aria-labelledby="archive-detail-title">
       <div class="section-heading"><h3 id="archive-detail-title">저장된 실행 · 현재 실행과 별개</h3><button id="archive-close" class="secondary" type="button">저장 상세 닫기</button></div>
       <p class="notice warning">과거 저장 근거입니다. 현재 설정의 실행 결과를 바꾸거나 최신 정책 검증을 대신하지 않습니다.</p>
-      <p id="archive-meta" class="mono meta"></p>
+      <dl id="archive-summary" class="archive-summary"></dl>
+      <details class="archive-identifiers"><summary>실행 식별자와 원본 hash</summary><p id="archive-meta" class="mono meta"></p></details>
       <div id="archive-evidence"></div>
       <h3>검토 메모 이력</h3><ol id="archive-events" class="archive-events"></ol>
       <form id="archive-review-form" class="archive-form">

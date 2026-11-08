@@ -100,12 +100,13 @@ for each case:
 
 사례의 business_verdict: PASS_WITHIN_SCOPE / FAIL / INCONCLUSIVE.
 
-리포트의 readiness: BLOCKED / REVIEW_REQUIRED / PASS_WITHIN_REGISTERED_SCOPE.
+리포트의 readiness: BLOCKED / REVIEW_REQUIRED / PARTIAL_SCOPE / PASS_WITHIN_REGISTERED_SCOPE.
 
 - 어떤 결정적인 assertion이 실패하면 FAIL이다.
 - 관찰 불가·파싱 불가·미승인 기준·필수 시험 미실행이면 INCONCLUSIVE다.
 - 모든 실행 기록이 있어도 미확인 범위가 남으면 ‘전사 검증 완료’가 아니다.
 - 중요한 실패가 있으면 BLOCKED다. 실패 없이 미확인만 있으면 REVIEW_REQUIRED다.
+- 선택한 일부 사례만 통과하고 미확인이 없으면 PARTIAL_SCOPE다. 제외한 사례를 통과로 간주하지 않는다.
 - 등록된 필수 항목과 시험이 모두 검증됐을 때만 해당 등록 범위의 통과를 표시한다.
 - 최종 배포 승인과 실행은 이 서비스의 자동 작업으로 연결하지 않는다.
 
@@ -157,3 +158,69 @@ for each case:
 정책 before/after는 줄바꿈을 LF로 정규화한 UTF-8 원문 SHA-256과 일치해야 한다. CRLF/CR 변환만 동일하게 취급하며 나머지 내용·공백 변경은 검토를 무효화한다. 응답에 canonicalization=utf8_lf를 기록한다. 새 문서의 의미를 자동 추론하거나 기존 검토를 이어 쓰지 않는다. 근거 줄 번호와 인용은 수동 등록한 정책에 연결된다. 실행 ID는 매번 새로 만들고 구성·규정·평가기 버전 manifest는 재현 가능하게 기록한다.
 
 요청은 정확한 로컬 Host·동일 Origin·세션 내 요청 토큰을 확인한다. 임의 파일 제공, 외부 요청, 디렉터리 목록, 설정 저장은 지원하지 않는다. 이 보호는 로컬 단일 사용자 데모에 한정되며 인증·권한·비밀 보관·운영 서버 방어를 대신하지 않는다.
+
+### 11.1 사례 선택과 실행 범위
+
+기존 요청 `{"faq_version":"corrected","api_version":"corrected"}`은 등록된 12개 사례를 모두 실행한다. 선택 실행은 `case_ids`를 추가한다.
+
+```json
+{"faq_version":"corrected","api_version":"corrected","case_ids":["S04","S01"]}
+```
+
+- `case_ids`는 1~12개의 문자열로 된 배열이다. 빈 배열, null, 다른 자료형, 중복, 알 수 없는 ID를 실행 전에 거부한다. 대소문자·공백을 자동 보정하지 않는다.
+- 실행 순서와 응답 `configuration.case_ids`는 등록 팩 순서로 정규화한다. 위 요청의 실행 순서는 S01, S04다. `case_ids`를 생략한 기존 요청에는 응답 설정에도 해당 필드를 추가하지 않는다.
+- 선택한 팩을 API와 FAQ 평가기에 전달한다. 전체 실행 후 결과만 숨기는 방식이 아니다. 두 평가기의 사례 ID와 순서가 선택 범위와 다르면 보고서를 만들지 않는다.
+- 응답과 `manifest`, 중첩 `api`에 같은 `scope`를 기록한다. `total`과 `counts`는 선택하여 실행한 사례만 센다.
+
+```json
+{
+  "registered_total": 12,
+  "selected_total": 2,
+  "selected_case_ids": ["S01", "S04"],
+  "omitted_case_ids": ["S02", "S03", "S05", "S06", "S07", "S08", "S09", "S10", "S11", "S12"],
+  "complete": false
+}
+```
+
+`readiness` 우선순위는 FAIL이 있으면 BLOCKED, 그 외 INCONCLUSIVE가 있으면 REVIEW_REQUIRED, 그 외 일부 범위이면 PARTIAL_SCOPE, 전체 등록 범위이면 PASS_WITHIN_REGISTERED_SCOPE다. API만의 중첩 결과에도 같은 범위 원칙을 적용한다. 따라서 실패·미확인 사례를 선택에서 빼도 전체 준비 완료로 바뀌지 않는다. 전체 등록 범위 통과도 실제 배포 승인을 뜻하지 않는다.
+
+manifest는 정규화한 설정·scope·전체 등록 팩의 `registered_pack_sha256`를 포함한다. `api_manifest.pack_digest`는 실제 실행한 선택 팩의 digest다. 선택 ID의 입력 순서만 바뀌면 같은 manifest를 만들지만, 선택 범위나 제외한 사례 정의가 바뀌면 manifest가 바뀐다. 기존의 정책·FAQ·평가기 소스 hash는 유지한다.
+
+### 11.2 사례 비교 요약
+
+원래의 `faq`, `baseline`, `candidate`, snapshot, error 필드를 유지하고 각 사례에 다음 요약을 추가한다.
+
+```json
+{
+  "decision_summary": {
+    "expected": {"status": "DECIDED", "decision": "ELIGIBLE"},
+    "faq": {"status": "DECIDED", "decision": "ELIGIBLE"},
+    "baseline_api": {"status": "DECIDED", "decision": "INELIGIBLE"},
+    "candidate_api": {"status": "DECIDED", "decision": "ELIGIBLE"}
+  },
+  "state_summary": {
+    "expected_count": 1,
+    "observed_count": 1,
+    "replay_count": 1,
+    "verification": "PASS",
+    "checks": {
+      "table": true,
+      "target": true,
+      "operation_key": true,
+      "input_digest": true,
+      "decision": true,
+      "preserved_state": true,
+      "replay_unchanged": true
+    },
+    "errors": []
+  }
+}
+```
+
+`decision_summary.expected`는 후보 정책의 기대 응답이다. 나머지는 실제 각 응답의 status·decision을 그대로 투영한다. 응답이 없으면 해당 객체는 null이고, 응답 객체의 필드가 없으면 그 필드는 null이다. 기대값이나 최종 업무 판정을 실제 응답 대신 채우지 않는다.
+
+`state_summary`는 후보 API에 한정된다. `observed_count`는 초기 snapshot 대비 첫 호출 후 상태 변화량, `replay_count`는 초기 snapshot 대비 재호출 후 상태 변화량이다. 재호출 횟수가 아니며 추가 중복 접수량도 아니다. 해당 snapshot이 없거나 재호출하지 않았으면 null이다. 응답 timeout 뒤 첫 상태만 관찰한 경우 이를 재호출 관찰로 복제하지 않는다.
+
+`verification`은 후보의 응답·상태·재호출 증거를 검증한 assertion 요약이다. 원래 assertion 오류를 보존하고 실제 첫 호출·재호출 snapshot에서 건수, 테이블, 대상, 작업 키, 입력 digest, decision, 기존 상태 보존, 재호출 불변을 확인한다. 건수 일치만으로 PASS가 되지 않는다. 확인된 불일치가 있으면 FAIL, 불일치는 없지만 호출·관찰이 불완전하면 INCOMPLETE다. 필요한 증거가 모두 확인돼야 PASS다. 이는 업무 판정 통과와 다르며 미확인 입력의 진단 검증은 PASS일 수 있다.
+
+`checks`는 true/false/null이다. 실제 관찰이 없거나 비교할 신규 행이 없어 해당 행 검사가 적용되지 않으면 null이다. 쓰기가 없어야 하는 사례의 관찰 건수 0과 재호출 불변이 확인되면 행 관련 check가 null이어도 정상일 수 있다. null을 통과·0·false로 치환하지 않는다. `errors`는 근거에서 확인된 불일치이며, 호출·관찰 실패 세부 정보는 원래 `candidate.invocation_error`, `candidate.observation_error`에 남는다.

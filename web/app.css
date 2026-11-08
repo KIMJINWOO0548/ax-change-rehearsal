@@ -2,3 +2,57 @@
 
 #case-rows button{white-space:nowrap;min-width:88px}
 .table-wrap:focus-visible{outline-offset:3px}
+
+/* Review workflow extensions use the existing visual tokens. */
+.change-summary{font-size:23px;font-weight:720;letter-spacing:-.6px;margin:0 0 18px}
+.changed-rule{padding:18px 16px;font-size:13px;min-height:96px;line-height:1.8}
+.after .changed-rule{background:#f4faf7}
+.document details{padding:0}
+.document summary{padding:11px 16px}
+.document details .mono{padding:0 16px 12px}
+.document .lines{border-top:1px solid var(--line);max-height:280px}
+#scenario-field{display:block;border:0;padding:0}
+.selection-toolbar{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:16px}
+.search-label{display:grid;gap:5px;font-size:12px;min-width:200px}
+input[type=search]{border:1px solid #aebacb;border-radius:6px;padding:9px 11px;min-width:0;background:#fff;color:var(--ink)}
+.selection-actions{display:flex;gap:6px;flex-wrap:wrap}
+.selection-actions .secondary{font-size:12px;padding:8px 11px}
+.scenario-list{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line);gap:0 24px}
+.scenario-option{display:flex;align-items:flex-start;gap:10px;padding:13px 6px;border-bottom:1px solid var(--line);cursor:pointer;min-width:0}
+.scenario-option:has(input:checked){background:#f5faf8}
+.scenario-option input{accent-color:var(--teal);flex:0 0 auto;width:18px;height:18px;margin:3px 0 0}
+.scenario-option span{display:grid;min-width:0;gap:2px}
+.scenario-option strong{font-size:13px;font-weight:560;overflow-wrap:anywhere}
+.scenario-option small{color:var(--muted);font-size:11px}
+#scope-warning{margin-top:16px}
+.run-provenance{margin-top:12px}
+.run-provenance .mono{margin-top:8px}
+.comparison-bar{display:grid;grid-template-columns:minmax(200px,310px) 1fr;align-items:center;gap:20px;background:#f5f8fb;border:1px solid var(--line);border-radius:6px;padding:16px;margin-top:20px}
+.comparison-bar label{display:grid;gap:5px;font-size:12px;font-weight:600;min-width:0}
+.comparison-bar select{width:100%;min-width:0;padding:8px;border:1px solid #b8c3d2;background:white;color:var(--ink)}
+.comparison-bar p{font-size:12px;overflow-wrap:anywhere}
+.filter-row{flex-wrap:wrap;gap:8px 10px}
+.filter-row #select-failed{margin-left:auto}
+.filter-row #visible-count{margin-left:0}
+.table-wrap table{min-width:800px}
+.table-wrap th:first-child{width:30%}
+.table-wrap .muted{color:var(--muted);white-space:nowrap;font-size:11px}
+.decision-comparison,.state-comparison{margin:20px 0}
+.decision-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line);border-radius:6px;margin-top:10px;overflow:hidden}
+.decision-cell{display:grid;gap:7px;padding:14px;border-right:1px solid var(--line)}
+.decision-cell:last-child{border:0}
+.decision-cell>span,.decision-cell small{font-size:11px;color:var(--muted)}
+.decision-cell strong{font-size:16px;overflow-wrap:anywhere}
+.decision-cell.mismatch{background:#fff0ec;box-shadow:inset 0 3px #bb5843}
+.state-metrics{display:grid;grid-template-columns:repeat(3,1fr);background:#f5f8fb;margin-top:10px;border-radius:6px}
+.state-metrics>div{display:grid;gap:5px;padding:14px}
+.state-metrics span{font-size:12px;color:var(--muted)}
+.state-metrics strong{font-size:21px}
+.state-checks{font-size:12px;margin-top:10px}
+.state-comparison ul{font-family:ui-monospace,Consolas,monospace;font-size:11px;overflow-wrap:anywhere;padding-left:20px}
+.state-comparison .notice{margin-top:12px}
+@media(max-width:1150px){.selection-toolbar{align-items:stretch;flex-direction:column}.selection-actions{justify-content:flex-start}}
+@media(max-width:760px){.change-summary{font-size:21px}.changed-rule{min-height:0}.scenario-list{grid-template-columns:1fr}.selection-actions{gap:6px}.search-label{min-width:0}.comparison-bar{grid-template-columns:1fr;gap:12px}.filter-row #select-failed{margin-left:0}.decision-grid{grid-template-columns:1fr 1fr}.decision-cell:nth-child(2){border-right:0}.decision-cell:nth-child(-n+2){border-bottom:1px solid var(--line)}.decision-cell{padding:12px}.decision-cell strong{font-size:15px}.state-metrics>div{padding:12px 8px}.state-metrics strong{font-size:19px}.run-action button{min-height:44px}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+#scenario-list > .scenario-option{grid-row:auto;grid-column:auto}
+@media(max-width:760px){.summary-item{width:50%;min-width:0}.filter-row{display:grid;grid-template-columns:80px minmax(0,1fr)}.filter-row select{width:100%;min-width:0}.filter-row #visible-count,.filter-row #select-failed{grid-column:1/-1}.filter-row #select-failed{justify-self:start}}

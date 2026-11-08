@@ -50,6 +50,49 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(headers['X-Content-Type-Options'],'nosniff')
         self.assertNotIn('Access-Control-Allow-Origin',headers)
 
+    def test_http_subset_returns_canonical_scope_and_manifest(self):
+        configuration = {'faq_version': 'corrected', 'api_version': 'corrected',
+                         'case_ids': ['S04', 'S01']}
+        status, _, body = self.post(json.dumps(configuration))
+        self.assertEqual(status, 200)
+        report = json.loads(body)
+        self.assertEqual(report['configuration']['case_ids'], ['S01', 'S04'])
+        self.assertEqual(report['scope']['registered_total'], 12)
+        self.assertEqual(report['scope']['selected_total'], 2)
+        self.assertFalse(report['scope']['complete'])
+        self.assertEqual(report['manifest']['scope'], report['scope'])
+        self.assertEqual(report['readiness'], 'PARTIAL_SCOPE')
+        self.assertEqual([case['id'] for case in report['cases']], ['S01', 'S04'])
+        self.assertEqual(report['cases'][1]['state_summary']['verification'], 'PASS')
+
+    def test_http_case_selection_rejects_invalid_types_duplicates_and_unknowns(self):
+        for ids in (None, [], 'S04', {}, [True], [4], [None], [['S04']], [{}],
+                    ['s04'], [' S04'], ['S13'], ['S04', 'S04'], ['S04'] * 13):
+            with self.subTest(ids=ids):
+                status, _, body = self.post(json.dumps({
+                    'faq_version': 'corrected', 'api_version': 'corrected', 'case_ids': ids}))
+                self.assertEqual(status, 400)
+                self.assertIn('error', json.loads(body))
+
+    def test_http_subset_duplicate_json_key_is_rejected(self):
+        status, _, _ = self.post('{"faq_version":"corrected","api_version":"corrected",'
+                                 '"case_ids":["S01"],"case_ids":["S04"]}')
+        self.assertEqual(status, 400)
+
+    def test_http_all_four_subset_combinations_keep_unknowns(self):
+        for faq, api, readiness in [('stale', 'stale', 'BLOCKED'),
+                                    ('corrected', 'stale', 'BLOCKED'),
+                                    ('stale', 'corrected', 'BLOCKED'),
+                                    ('corrected', 'corrected', 'REVIEW_REQUIRED')]:
+            with self.subTest(faq=faq, api=api):
+                status, _, body = self.post(json.dumps({
+                    'faq_version': faq, 'api_version': api, 'case_ids': ['S04', 'S10']}))
+                self.assertEqual(status, 200)
+                report = json.loads(body)
+                self.assertEqual(report['readiness'], readiness)
+                self.assertEqual(report['counts']['INCONCLUSIVE'], 1)
+                self.assertFalse(report['scope']['complete'])
+
     def test_forged_hosts_are_rejected_before_context_or_run(self):
         for host in ('evil.example','127.0.0.1.evil.example','localhost','127.0.0.1:1'):
             with self.subTest(host=host):

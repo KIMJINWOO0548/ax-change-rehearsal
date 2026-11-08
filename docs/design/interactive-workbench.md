@@ -20,7 +20,8 @@ GET /api/context returns:
 - limits [plain-language limitations]
 
 POST /api/run requires application/json and X-CSRF-Token. Body exactly:
-{faq_version:'stale'|'corrected',api_version:'stale'|'corrected'}.
+{faq_version:'stale'|'corrected',api_version:'stale'|'corrected',case_ids?:[registered IDs]}.
+The optional case_ids contract and scope/state summaries are defined in contracts/CONTRACTS.md section 11.1 onward. Empty, duplicate or unknown selections are rejected.
 Returns {run_id,created_at,configuration,manifest_sha256,readiness,counts,total,policy,cases,api,faq,limits}.
 Cases each {id,label,input,intended_behavior,business_verdict,assertion_status,faq:full FAQ result,baseline:full baseline side,candidate:full candidate side,evidence:[{path,line,quote,sha256}],reason}.
 All counts/verdicts derive from the actual existing engine and FAQ evaluator, never frontend constants. Full API and FAQ objects preserve raw evidence. Run id/hash records configuration, sources and output. No mutable backend config or filesystem writes, no external connections. Refresh resets selections in the browser; downloaded runs are user's own artifacts.
@@ -34,3 +35,6 @@ Use DOM textContent and element construction for untrusted text. No innerHTML fr
 ## Verification
 
 Preserve all 39 prior tests. Add four FAQ/API combinations, evidence hash/line validity, malformed API requests, CSRF/Host/Origin/body limits/static path traversal and no file writes. Run HTTP integration tests against ephemeral loopback server. Browser QA covers initial state, stale run, FAQ-only correction, complete correction, case details, filters, repeated clicks, error response, stale result warning, narrow layout, and JSON download when tools permit. Clearly distinguish automated checks from visual checks and mock scope from production readiness.
+
+## Review workflow extension
+See review-workflow.md and frontend-qa.md for scenario selection, scoped execution, structured evidence, bounded run history and conservative comparison. Readiness, omitted scope and required provenance are independently checked before display.

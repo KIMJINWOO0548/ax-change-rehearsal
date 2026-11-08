@@ -14,7 +14,8 @@ from .validation import _reject_constant, _unique_pairs
 ASSETS = {'/': ('index.html', 'text/html; charset=utf-8'),
           '/index.html': ('index.html', 'text/html; charset=utf-8'),
           '/app.css': ('app.css', 'text/css; charset=utf-8'),
-          '/app.js': ('app.js', 'text/javascript; charset=utf-8')}
+          '/app.js': ('app.js', 'text/javascript; charset=utf-8'),
+          '/review.js': ('review.js', 'text/javascript; charset=utf-8')}
 MAX_BODY = 2048
 CSP = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 

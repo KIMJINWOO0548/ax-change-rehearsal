@@ -1,0 +1,321 @@
+{
+  "record_version": 1,
+  "date_utc": "2026-11-09",
+  "base_ref": "feature/ui-review-workspace-v08-public",
+  "base_sha": "a0152c22c32c09ad9bdb90bec759d8fa3ec4fe87",
+  "branch": "improve/run-completion-integrity-20261109",
+  "provenance": "Independent implementation from accessible remote code. Inaccessible preservation files were not read, restored, or replaced.",
+  "scope": [
+    "Reject incomplete/misaligned or unknown-verdict evaluator output before offline workbench report composition.",
+    "Compare replay canonical JSON representations and section presence instead of Python value equality."
+  ],
+  "runtime": {
+    "platform": "Linux",
+    "python": "3.12.14",
+    "node": "v24.22.1",
+    "optional_packages_from_existing_environment": {
+      "cryptography": "50.0.0",
+      "cffi": "2.1.1",
+      "pycparser": "3.0"
+    },
+    "new_dependency_install": false,
+    "global_setting_changes": false
+  },
+  "tests": {
+    "baseline": {
+      "run": 170,
+      "passed": 170,
+      "exit_code": 0
+    },
+    "initial_red": {
+      "methods": 7,
+      "failures_including_subtests": 18,
+      "errors": 2,
+      "exit_code": 1
+    },
+    "expanded_exact_base_red": {
+      "methods": 7,
+      "failures_including_subtests": 24,
+      "errors": 2,
+      "exit_code": 1
+    },
+    "initial_affected_green": {
+      "run": 49,
+      "passed": 49,
+      "exit_code": 0
+    },
+    "null_section_red": {
+      "run": 1,
+      "failures": 1,
+      "exit_code": 1
+    },
+    "final_full_green": {
+      "run": 178,
+      "passed": 178,
+      "skipped": 0,
+      "exit_code": 0
+    },
+    "frontend": {
+      "command": [
+        "node",
+        "--test",
+        "tests/frontend/state.test.cjs",
+        "tests/frontend/review.test.cjs",
+        "tests/frontend/archive.test.cjs"
+      ],
+      "tests": 32,
+      "passed": 32,
+      "failed": 0,
+      "skipped": 0,
+      "exit_code": 0,
+      "evidence_source": "Direct tool execution output earlier in this same task; not rerun solely for logging."
+    }
+  },
+  "coverage": [
+    "API and FAQ empty/missing/duplicate/reordered/unregistered/malformed cases rejected before zip.",
+    "Unknown, null, list or object business verdict cannot become PASS.",
+    "Normal 12-case stages preserve 4/4/0 failures and three inconclusive cases each.",
+    "Equal numeric values represented as bool/int/float are different replay evidence.",
+    "Scope type mismatch rejected before execution; changed manifest JSON representation is INCOMPATIBLE.",
+    "Absent and explicit-null sections differ.",
+    "JSON roundtrip/key order remain accepted; partial/inconclusive MATCH and deployment_approval=false preserved."
+  ],
+  "cli_smoke": {
+    "synthetic_only": true,
+    "workbench_cli_exit": 0,
+    "stages": [
+      {
+        "cases": 12,
+        "counts": {
+          "PASS_WITHIN_SCOPE": 5,
+          "FAIL": 4,
+          "INCONCLUSIVE": 3
+        },
+        "readiness": "BLOCKED"
+      },
+      {
+        "cases": 12,
+        "counts": {
+          "PASS_WITHIN_SCOPE": 5,
+          "FAIL": 4,
+          "INCONCLUSIVE": 3
+        },
+        "readiness": "BLOCKED"
+      },
+      {
+        "cases": 12,
+        "counts": {
+          "PASS_WITHIN_SCOPE": 9,
+          "INCONCLUSIVE": 3
+        },
+        "readiness": "REVIEW_REQUIRED"
+      }
+    ],
+    "fault_injection_cli_controller_exit": 0,
+    "incomplete_output_created": false,
+    "stored_replay_cli": [
+      {
+        "status": "MATCH",
+        "readiness": "PARTIAL_SCOPE",
+        "counts": {
+          "PASS_WITHIN_SCOPE": 1
+        },
+        "original_record_unchanged": true,
+        "deployment_approval": false
+      },
+      {
+        "status": "MATCH",
+        "readiness": "REVIEW_REQUIRED",
+        "counts": {
+          "PASS_WITHIN_SCOPE": 9,
+          "INCONCLUSIVE": 3
+        },
+        "original_record_unchanged": true,
+        "deployment_approval": false
+      }
+    ],
+    "real_enterprise_system_connected": false,
+    "ui_browser_executed": false,
+    "temporary_files_removed_on_exit": true,
+    "policy_inputs_and_notes_recorded": false
+  },
+  "demo_cli": {
+    "command": [
+      "python3",
+      "run_demo.py"
+    ],
+    "execution": "Fresh temporary copy of current public source and synthetic fixtures; outputs removed on exit.",
+    "exit_code": 0,
+    "variants": 11,
+    "cases_per_variant": 36,
+    "normal": {
+      "variant": "normal",
+      "cases": 36,
+      "business_counts": {
+        "PASS_WITHIN_SCOPE": 27,
+        "INCONCLUSIVE": 9
+      },
+      "assertion_counts": {
+        "PASS": 36
+      }
+    },
+    "observer_timeout": {
+      "variant": "observer_timeout",
+      "cases": 36,
+      "business_counts": {
+        "INCONCLUSIVE": 36
+      },
+      "assertion_counts": {
+        "INCOMPLETE": 36
+      }
+    },
+    "real_enterprise_system_connected": false,
+    "llm_executed": false,
+    "raw_case_evidence_published": false
+  },
+  "support_checks": [
+    {
+      "name": "stdlib-core",
+      "command": [
+        "python3",
+        "-S",
+        "-c",
+        "from rehearsal.server import make_server; from rehearsal.recovery import create_backup"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "package-validation",
+      "command": [
+        "python3",
+        "tools/validate_package.py",
+        "--json"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "app-syntax",
+      "command": [
+        "node",
+        "--check",
+        "web/app.js"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "review-syntax",
+      "command": [
+        "node",
+        "--check",
+        "web/review.js"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "archive-syntax",
+      "command": [
+        "node",
+        "--check",
+        "web/archive.js"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "compileall",
+      "command": [
+        "python3",
+        "-m",
+        "compileall",
+        "-q",
+        "rehearsal",
+        "tests",
+        "tools",
+        "run_demo.py",
+        "run_workbench.py",
+        "serve_workbench.py",
+        "manage_evidence.py",
+        "manage_recovery.py",
+        "manage_sealed.py"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "controller_failure": {
+    "error_type": "FileNotFoundError",
+    "phase": "Isolated exact-base RED source-copy controller",
+    "omitted_public_source_file": "run_workbench.py",
+    "initial_red_in_original_worktree_remains_valid": true,
+    "contaminated_run_excluded_from_behavior_counts": true
+  },
+  "preservation": {
+    "base_sha": "a0152c22c32c09ad9bdb90bec759d8fa3ec4fe87",
+    "web_fixture_example_files_unchanged": 16,
+    "protected_runtime_schema_lock_unchanged": [
+      "rehearsal/engine.py",
+      "rehearsal/adapters.py",
+      "rehearsal/report.py",
+      "rehearsal/app.py",
+      "rehearsal/storage.py",
+      "rehearsal/recovery.py",
+      "rehearsal/sealed.py",
+      "requirements-encryption.txt",
+      "contracts/domain-pack.schema.json"
+    ]
+  },
+  "storage_schema_and_legacy_summary_format_changed": false,
+  "read_only_internal_review": {
+    "agents": 2,
+    "blocking_findings_remaining": 0,
+    "null_section_finding_fixed_with_red_regression": true,
+    "external_human_acceptance": false
+  },
+  "source_sha256": {
+    "rehearsal/workbench.py": "4e6c3da15931305300f75ba710b0f72cd4c04741ea4c4b52f45f7478cefe0efb",
+    "rehearsal/replay.py": "2eb4d3f04d1dd915d1a99e8dc342add52dabbb4db75a9713af54382567e5b935",
+    "tests/test_completion_integrity.py": "fc1ccb6b034fe13edff18fc49c0a80799fe8ba16d026a8c2e9369dfaa33814cd"
+  },
+  "local_evidence": {
+    "directory": "/tmp/ax-rehearsal-20261109T163205Z-24b98b40-completion",
+    "file_sha256": {
+      "baseline-unittest.log": "f40b0ea01d5bc771985693a9963aadb1a14e55116d1be53c1ab126334bec63b7",
+      "completion-red.log": "0f0d48f6b16c2a0c4bb9bde39da0880ce45b8796e52590ca4dec04cd0f70588b",
+      "completion-red-verified.log": "e5c67f94eb8815995cccde7c51cb3f1f86883671bb8780dd39e58d6688971910",
+      "completion-green.log": "271da381051bc5ec21861d294cfb4af02f75ec523b05b16812f23120eaed73d3",
+      "null-section-red.log": "7297d1782a746821575c33ec815b82097dd6d8f1bbb4a4cd8be426cef659e205",
+      "full-unittest-final.log": "250db18be681054e53be44f6902ed0fc5892f5c98f7a9ce0f2148645c1d3c2a1",
+      "red-copy-controller-failure.json": "e3d4e9f76d874cfed1d117df5d89299e95031f6278a0ee9e326992e32a963eac",
+      "runtime-final.json": "061d0e4ac269f75c7cc2eb5daa3c35dcef2027544d5729701f673bc27554983e",
+      "cli-smoke.json": "0b6f58321c60b996bd2274320d0e4d25ab11f6b558beb98c8573d50b45bdb683",
+      "demo-cli.json": "b88de2e15aaf7f51b86dc189eb2203cb24346d674a734cf3014cba3a31119b8b",
+      "support-checks.json": "3b47f156eeafa1ba01ee022ee2841b548171d840f1ac53d0cac66e240cc703a3",
+      "frontend-observed.json": "bd19e4e1790dddf514894c8795bdc8cc16e169c43573c8eb934969f38a307297",
+      "preservation.json": "415b2c6cb534e087e978a551c0e05de618980de417e950afa875830c8665ebc8",
+      "stdlib-core.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "package-validation.log": "43538f35134182a8d96f10712f11091de98a650817f4ff5ec926900f25935081",
+      "app-syntax.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "review-syntax.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "archive-syntax.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "compileall.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "contaminated_red_copy_log_excluded_from_behavior_counts": true
+  },
+  "publication": {
+    "repository_visibility_verified": "public",
+    "new_ui_or_template_changes": false,
+    "policy_inputs_review_notes_database_or_sealed_files_in_this_record": false,
+    "deployment_or_external_service_write": false
+  },
+  "not_run": [
+    "New browser execution.",
+    "Windows and other Python versions.",
+    "Actual enterprise API integration or operational accuracy.",
+    "New worker lifecycle/restart/cancellation implementation.",
+    "Remote CI success not established by local checks."
+  ],
+  "limitations": [
+    "Missing evaluator output was fault-injected; no natural omission from current normal evaluators was reproduced.",
+    "MATCH can reproduce partial or inconclusive results; it is not readiness, approval or business-accuracy proof.",
+    "No report authenticity/signature or complete semantic validation of stored summaries is added.",
+    "Existing local storage and synthetic-only execution boundaries remain."
+  ]
+}

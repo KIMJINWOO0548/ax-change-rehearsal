@@ -15,6 +15,7 @@ from pathlib import Path
 
 from .adapters import digest
 from .engine import load_packs, run_pack
+from .validation import require
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -88,6 +89,7 @@ def evaluate_faq(faq: dict, pack: dict) -> dict:
 
 def build_workbench(stale_faq: dict | None = None, corrected_faq: dict | None = None) -> dict:
     pack = load_packs(['customer_service'])[0]
+    registered_ids = [case['id'] for case in pack['cases']]
     stale_faq = copy.deepcopy(stale_faq if stale_faq is not None else load_faq(ROOT / 'examples/customer_service/faq_stale.json'))
     corrected_faq = copy.deepcopy(corrected_faq if corrected_faq is not None else load_faq(ROOT / 'examples/customer_service/faq_corrected.json'))
     sources = {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
@@ -100,6 +102,16 @@ def build_workbench(stale_faq: dict | None = None, corrected_faq: dict | None = 
     ):
         api = run_pack(pack, variant)
         faq = evaluate_faq(config, pack)
+        # zip would silently omit missing results or pair different cases.
+        # Reject incomplete/unknown evaluator output before deriving readiness.
+        for result in (api, faq):
+            require(type(result) is dict and type(result.get('cases')) is list
+                    and all(type(case) is dict
+                            and type(case.get('business_verdict')) is str
+                            and case.get('business_verdict') in {'PASS_WITHIN_SCOPE', 'FAIL', 'INCONCLUSIVE'}
+                            for case in result['cases'])
+                    and [case.get('id') for case in result['cases']] == registered_ids,
+                    'Execution results do not match the registered scope.')
         cases = []
         for api_case, faq_case in zip(api['cases'], faq['cases']):
             verdicts = (api_case['business_verdict'], faq_case['business_verdict'])

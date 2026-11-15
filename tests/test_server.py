@@ -190,6 +190,20 @@ class PersistentServerTests(unittest.TestCase):
                             json.dumps(payload, ensure_ascii=False).encode('utf-8'),
                             {'Content-Type': 'application/json', 'X-CSRF-Token': self.token()})
 
+    def test_execution_journal_http_reports_completed_and_failed(self):
+        status, _, body = self.post()
+        self.assertEqual(status, 200)
+        run = json.loads(body)
+        with patch('rehearsal.server.execute_run', side_effect=RuntimeError('synthetic failure')):
+            self.assertEqual(self.post()[0], 500)
+        status, _, body = self.request(path='/api/executions')
+        self.assertEqual(status, 200)
+        journal = json.loads(body)
+        self.assertFalse(journal['automatic_retry'])
+        self.assertEqual([x['state'] for x in journal['executions']], ['FAILED', 'COMPLETED'])
+        self.assertEqual(journal['executions'][1]['run_id'], run['run_id'])
+        self.assertEqual(self.request(path='/api/executions', headers={'Origin':'https://evil.example'})[0], 403)
+
     def test_saved_report_and_review_preserve_partial_scope(self):
         status, _, body = self.post(json.dumps({'faq_version': 'corrected', 'api_version': 'corrected', 'case_ids': ['S01']}))
         self.assertEqual(status, 200); run = json.loads(body)

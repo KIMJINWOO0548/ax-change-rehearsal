@@ -232,3 +232,42 @@ def restore_backup(source, destination):
         return summary
     except RecoveryError: raise
     except Exception as exc: raise RecoveryError('Restore failed') from exc
+
+
+def rollover_workspace(workspace, archive, destination):
+    """Explicit offline segment rotation; never delete, evict or switch a server.
+
+    Stop the writer first. The verified backup is a point-in-time snapshot;
+    this operation does not prevent another process from writing to the old path.
+    """
+    try:
+        source = _source(workspace)
+        archive_path, target = _path(archive), _path(destination)
+        paths = (source, archive_path, target)
+        if any(a == b or a in b.parents or b in a.parents
+               for index, a in enumerate(paths) for b in paths[index + 1:]):
+            raise RecoveryError('Rollover paths must be separate')
+        if archive_path.exists() or target.exists():
+            raise RecoveryError('Rollover destinations must be new')
+        # Check without writing the source, then verify the actual copied ledger.
+        with _read_connection(source / DATABASE) as connection:
+            _, attempts = EvidenceStore.__new__(EvidenceStore)._verify(connection, with_attempts=True)
+        if any(item['state'] == 'INCOMPLETE' for item in attempts.values()):
+            raise RecoveryError('Incomplete executions require inspection before rollover')
+        summary = create_backup(source, archive_path)
+        with _read_connection(archive_path / DATABASE, immutable=True) as connection:
+            _, attempts = EvidenceStore.__new__(EvidenceStore)._verify(connection, with_attempts=True)
+        if any(item['state'] == 'INCOMPLETE' for item in attempts.values()):
+            raise RecoveryError('Snapshot contains incomplete executions')
+        target = _new_destination(target, source)
+        fresh = EvidenceStore(target)
+        if fresh.list_runs() or fresh.list_attempts():
+            raise RecoveryError('New segment is not empty')
+        return {'archived_run_count': summary['run_count'],
+                'archive_ledger_head': summary['ledger_head'],
+                'archive_database_sha256': summary['database_sha256'],
+                'new_segment_run_count': 0, 'per_segment_limit': LIMIT,
+                'source_preserved': True, 'automatic_switch': False,
+                'requires_writer_stopped': True}
+    except RecoveryError: raise
+    except Exception as exc: raise RecoveryError('Rollover failed; preserve all paths') from exc

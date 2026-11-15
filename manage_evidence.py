@@ -15,6 +15,7 @@ def main(argv=None):
     commands = parser.add_subparsers(dest='command', required=True)
     commands.add_parser('verify', help='Verify every saved report and review hash chain')
     commands.add_parser('list', help='List saved IDs and scope, without notes or raw inputs')
+    commands.add_parser('executions', help='Inspect completed, failed and incomplete executions; never retry')
     replay = commands.add_parser('replay', help='Explicitly replay a registered synthetic run; does not save')
     replay.add_argument('run_id')
     args = parser.parse_args(argv)
@@ -26,6 +27,9 @@ def main(argv=None):
         if args.command == 'replay':
             output = replay_report(store.get(args.run_id)['report'])
             code = 0 if output['status'] == 'MATCH' else 2
+        elif args.command == 'executions':
+            output = {'executions': store.list_attempts(), 'automatic_retry': False}
+            code = 0
         else:
             runs = store.list_runs()
             output = {'integrity': 'VERIFIED', 'runs': len(runs), 'authenticated_audit': False,

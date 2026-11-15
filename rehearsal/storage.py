@@ -16,6 +16,7 @@ ZERO = '0' * 64
 MAX_DATABASE_BYTES = 128 * 1024 * 1024
 MAX_PAYLOAD_BYTES = 1024 * 1024
 MAX_LEDGER_ROWS = LIMIT * 1001
+MAX_ATTEMPTS = 1000
 SCHEMA = {
     'ledger': 'CREATE TABLE ledger (seq INTEGER PRIMARY KEY, payload TEXT NOT NULL, previous TEXT NOT NULL, hash TEXT NOT NULL)',
     'metadata': 'CREATE TABLE metadata (id INTEGER PRIMARY KEY CHECK(id=1), head TEXT NOT NULL, count INTEGER NOT NULL)',
@@ -111,7 +112,7 @@ class EvidenceStore:
             connection.close()
             raise
 
-    def _verify(self, connection):
+    def _verify(self, connection, with_attempts=False):
         check_schema(connection)
         if connection.execute('PRAGMA quick_check').fetchall() != [('ok',)]: raise StorageError('Corrupt storage')
         if connection.execute('SELECT count(*) FROM ledger').fetchone()[0] > MAX_LEDGER_ROWS:
@@ -120,6 +121,7 @@ class EvidenceStore:
             raise StorageError('Invalid evidence size')
         rows = connection.execute('SELECT seq,payload,previous,hash FROM ledger ORDER BY seq')
         runs, previous, count = {}, ZERO, 0
+        attempts = {}
         for index, (seq, raw, prev, digest) in enumerate(rows, 1):
             count = index
             payload = json.loads(raw, object_pairs_hook=_unique_pairs, parse_constant=_reject_constant)
@@ -146,10 +148,39 @@ class EvidenceStore:
                     raise StorageError('Invalid review binding')
                 entry['record'].update(revision=event['revision'], review_status=event['status'])
                 entry['events'].append({**event, 'event_sha256': digest, 'previous_sha256': prev})
+            elif payload.get('type') == 'attempt_started':
+                if (set(payload) != {'type', 'attempt_id', 'configuration', 'created_at'}
+                        or type(payload['attempt_id']) is not str
+                        or uuid.UUID(payload['attempt_id']).hex != payload['attempt_id']
+                        or payload['attempt_id'] in attempts or len(attempts) >= MAX_ATTEMPTS
+                        or type(payload['created_at']) is not str or len(payload['created_at']) > 64):
+                    raise StorageError('Invalid execution start')
+                from .app import _validate_configuration
+                _validate_configuration(payload['configuration'])
+                attempts[payload['attempt_id']] = {**payload, 'state': 'INCOMPLETE'}
+            elif payload.get('type') == 'attempt_finished':
+                if (set(payload) != {'type', 'attempt_id', 'state', 'run_id', 'created_at'}
+                        or type(payload['attempt_id']) is not str
+                        or payload['attempt_id'] not in attempts
+                        or type(payload['state']) is not str
+                        or payload['state'] not in {'COMPLETED', 'FAILED'}
+                        or type(payload['created_at']) is not str or len(payload['created_at']) > 64):
+                    raise StorageError('Invalid execution finish')
+                attempt = attempts[payload['attempt_id']]
+                if attempt['state'] != 'INCOMPLETE': raise StorageError('Duplicate execution finish')
+                if payload['state'] == 'COMPLETED':
+                    run_id = payload['run_id']
+                    if (type(run_id) is not str or run_id not in runs
+                            or canonical(runs[run_id]['report']['configuration']) != canonical(attempt['configuration'])
+                            or any(x.get('run_id') == run_id for x in attempts.values())):
+                        raise StorageError('Execution report mismatch')
+                elif payload['run_id'] is not None:
+                    raise StorageError('Failed execution cannot have a report')
+                attempt.update(state=payload['state'], run_id=payload['run_id'], finished_at=payload['created_at'])
             else: raise StorageError('Unknown evidence type')
         if connection.execute('SELECT id,head,count FROM metadata LIMIT 2').fetchall() != [(1, previous, count)]:
             raise StorageError('Invalid evidence head')
-        return runs
+        return (runs, attempts) if with_attempts else runs
 
     def _operate(self, action):
         connection = None
@@ -171,18 +202,62 @@ class EvidenceStore:
 
     def _append(self, connection, payload):
         head, count = connection.execute('SELECT head,count FROM metadata WHERE id=1').fetchone()
+        if count >= MAX_LEDGER_ROWS: raise StorageLimit('Evidence limit reached')
         digest = sha({'previous': head, 'payload': payload})
         connection.execute('INSERT INTO ledger VALUES (?,?,?,?)', (count + 1, canonical(payload), head, digest))
         connection.execute('UPDATE metadata SET head=?,count=? WHERE id=1', (digest, count + 1))
 
-    def save(self, report):
+    def save(self, report, *, attempt_id=None):
         validate_report(report)
         def action(connection, runs):
-            if len(runs) >= self.limit: raise StorageLimit('Storage full')
+            _, attempts = self._verify(connection, with_attempts=True)
+            reserved = sum(item['state'] == 'INCOMPLETE' for item in attempts.values())
+            if len(runs) >= self.limit or (attempt_id is None and len(runs) + reserved >= self.limit):
+                raise StorageLimit('Storage full or reserved')
             if report['run_id'] in runs: raise StorageConflict('Duplicate run')
+            if attempt_id is not None:
+                self._require_pending(connection, attempt_id)
             self._append(connection, {'type': 'run', 'report': report})
+            if attempt_id is not None:
+                self._finish(connection, attempt_id, 'COMPLETED', report['run_id'])
             return self._verify(connection)[report['run_id']]['record']
         return self._operate(action)
+
+    def begin_attempt(self, configuration):
+        from .app import _validate_configuration
+        _validate_configuration(configuration)
+        # Canonical roundtrip prevents a caller mutating the recorded config.
+        configuration = json.loads(canonical(configuration))
+        attempt_id = uuid.uuid4().hex
+        def action(connection, runs):
+            _, attempts = self._verify(connection, with_attempts=True)
+            reserved = sum(item['state'] == 'INCOMPLETE' for item in attempts.values())
+            if len(runs) + reserved >= self.limit: raise StorageLimit('Storage full or reserved')
+            if len(attempts) >= MAX_ATTEMPTS: raise StorageLimit('Execution journal full')
+            self._append(connection, {'type': 'attempt_started', 'attempt_id': attempt_id,
+                         'configuration': configuration,
+                         'created_at': dt.datetime.now(dt.timezone.utc).isoformat()})
+            return attempt_id
+        return self._operate(action)
+
+    def _require_pending(self, connection, attempt_id):
+        _, attempts = self._verify(connection, with_attempts=True)
+        if type(attempt_id) is not str or attempt_id not in attempts or attempts[attempt_id]['state'] != 'INCOMPLETE':
+            raise StorageConflict('Execution is not pending')
+
+    def _finish(self, connection, attempt_id, state, run_id=None):
+        self._require_pending(connection, attempt_id)
+        self._append(connection, {'type': 'attempt_finished', 'attempt_id': attempt_id,
+                     'state': state, 'run_id': run_id,
+                     'created_at': dt.datetime.now(dt.timezone.utc).isoformat()})
+        self._verify(connection)
+
+    def fail_attempt(self, attempt_id):
+        return self._operate(lambda connection, runs: self._finish(connection, attempt_id, 'FAILED'))
+
+    def list_attempts(self):
+        return self._operate(lambda connection, runs: list(reversed(list(
+            self._verify(connection, with_attempts=True)[1].values()))))
 
     def list_runs(self):
         return self._operate(lambda connection, runs: [

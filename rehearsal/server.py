@@ -23,6 +23,21 @@ MAX_BODY = 2048
 CSP = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 
 
+def execute_persisted(store, configuration, runner):
+    """Commit the start before execution; never replay unfinished attempts."""
+    attempt_id = store.begin_attempt(configuration)
+    try:
+        result = runner(configuration)
+    except Exception:
+        # Failure to save this marker leaves INCOMPLETE, never a false success.
+        store.fail_attempt(attempt_id)
+        raise
+    # A finished computation with an unconfirmed save is not an execution failure.
+    # Preserve INCOMPLETE for inspection; never automatically rerun.
+    record = store.save(result, attempt_id=attempt_id)
+    return {**result, 'record': record}
+
+
 class WorkbenchServer(ThreadingHTTPServer):
     daemon_threads = True
 
@@ -95,11 +110,14 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                 self._storage_error(StorageError())
             except Exception:
                 self._error(500, 'CONTEXT_UNAVAILABLE', '규정 근거를 읽지 못했습니다. 로컬 프로젝트 파일을 확인하세요.')
-        elif self.path == '/api/runs' or self._run_path() is not None:
+        elif self.path in {'/api/runs', '/api/executions'} or self._run_path() is not None:
             if self.server.store is None:
                 self._error(503, 'STORAGE_DISABLED', '저장은 꺼져 있습니다. --workspace로 로컬 합성 기록을 활성화하세요.')
                 return
             try:
+                if self.path == '/api/executions':
+                    self._send(200, {'executions': self.server.store.list_attempts(), 'automatic_retry': False})
+                    return
                 result = ({'runs': self.server.store.list_runs(), 'storage': storage_info(True)}
                           if self.path == '/api/runs' else self.server.store.get(self._run_path()))
                 self._send(200, result)
@@ -167,10 +185,8 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                     return
                 result = self.server.store.review(review_id, config)
             else:
-                result = execute_run(config)
-                if self.server.store is not None:
-                    record = self.server.store.save(result)
-                    result = {**result, 'record': record}
+                result = (execute_persisted(self.server.store, config, execute_run)
+                          if self.server.store is not None else execute_run(config))
         except StorageError as exc:
             self._storage_error(exc)
         except (ValueError, UnicodeError):

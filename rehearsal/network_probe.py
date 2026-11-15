@@ -114,13 +114,19 @@ def probe(port, *, timeout=5.0, cancel=None, probe_id=None):
     finally:
         sender.close(); receiver.close()
         if spawned:
-            worker.join(.1)
-            if worker.is_alive():
-                worker.terminate(); worker.join(.8)
-            if worker.is_alive():
-                worker.kill(); worker.join(.8)
+            # A failed termination syscall must not skip the stronger fallback
+            # or turn unverified cleanup into success. Observe liveness after
+            # each bounded attempt; never infer remote cancellation from it.
+            try: worker.join(.1)
+            except OSError: pass
+            for stop in (worker.terminate, worker.kill):
+                if not worker.is_alive(): break
+                try: stop()
+                except OSError: pass
+                try: worker.join(.8)
+                except OSError: pass
             result['local_cleanup_verified'] = not worker.is_alive()
-            if not worker.is_alive(): worker.close()
+            if result['local_cleanup_verified']: worker.close()
         if not result['local_cleanup_verified']:
             result['status'] = 'CLEANUP_FAILED'; result['response'] = None
         result['events'].append(result['status'])

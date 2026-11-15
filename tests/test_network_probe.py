@@ -143,3 +143,61 @@ class FailureEvidenceTests(unittest.TestCase):
    result=probe(12345,timeout=5)
   self.assertEqual(result['status'],'TIMED_OUT');self.assertIsNone(result['response'])
   self.assertEqual(result['terminal_observed'],'RESPONSE_AFTER_BUDGET')
+
+class CleanupRecoveryTests(unittest.TestCase):
+ def exercise(self, survives):
+  from unittest.mock import Mock, patch
+  receiver=Mock();receiver.poll.return_value=False
+  worker=Mock();worker.is_alive.side_effect=lambda: survives or not worker.kill.called
+  worker.terminate.side_effect=OSError('private cleanup failure')
+  context=Mock();context.Pipe.return_value=(receiver,Mock());context.Process.return_value=worker
+  cancel=Mock();cancel.is_set.side_effect=[False,True]
+  with patch('rehearsal.network_probe.multiprocessing.get_context',return_value=context):
+   result=probe(12345,cancel=cancel)
+  return result,worker
+ def test_termination_error_still_attempts_kill(self):
+  result,worker=self.exercise(False)
+  worker.kill.assert_called_once()
+  self.assertEqual(result['status'],'CANCELLED')
+  self.assertTrue(result['local_cleanup_verified'])
+  self.assertEqual(result['remote_effects'],'UNKNOWN')
+ def test_surviving_worker_records_cleanup_failure(self):
+  from rehearsal.probe_journal import validate_outcome
+  result,worker=self.exercise(True)
+  worker.kill.assert_called_once()
+  self.assertEqual(result['status'],'CLEANUP_FAILED')
+  self.assertFalse(result['local_cleanup_verified'])
+  validate_outcome(result,'a'*32)
+  self.assertNotIn('private cleanup failure',json.dumps(result))
+ def test_kill_error_is_durably_recorded_and_never_resent(self):
+  import tempfile
+  from unittest.mock import Mock, patch
+  from rehearsal.storage import EvidenceStore
+  from rehearsal.probe_journal import execute_probe
+  receiver=Mock();receiver.poll.return_value=False
+  worker=Mock();worker.is_alive.return_value=True
+  worker.terminate.side_effect=OSError('terminate');worker.kill.side_effect=OSError('kill')
+  context=Mock();context.Pipe.return_value=(receiver,Mock());context.Process.return_value=worker
+  cancel=Mock();cancel.is_set.side_effect=[False,True]
+  with tempfile.TemporaryDirectory() as directory,patch('rehearsal.network_probe.multiprocessing.get_context',return_value=context):
+   first=execute_probe(EvidenceStore(directory),12345,request_key='cleanup',cancel=cancel)
+   second=execute_probe(EvidenceStore(directory),12345,request_key='cleanup')
+   self.assertEqual(first,second)
+   self.assertEqual(first['status'],'CLEANUP_FAILED')
+   self.assertFalse(first['local_cleanup_verified'])
+   context.Process.assert_called_once()
+   worker.close.assert_not_called()
+ def test_late_response_cleanup_failure_remains_valid_evidence(self):
+  from rehearsal.probe_journal import validate_outcome
+  from unittest.mock import Mock, patch
+  from collections import deque
+  messages=deque([('stage','CONNECTING'),('stage','REQUEST_SENT'),('result',{'value':'ok'})])
+  receiver=Mock();receiver.poll.side_effect=lambda timeout: bool(messages);receiver.recv.side_effect=messages.popleft
+  worker=Mock();worker.is_alive.return_value=True
+  context=Mock();context.Pipe.return_value=(receiver,Mock());context.Process.return_value=worker
+  with patch('rehearsal.network_probe.multiprocessing.get_context',return_value=context),patch('rehearsal.network_probe.time.monotonic',side_effect=[0,10,10]):
+   result=probe(12345,timeout=5)
+  self.assertEqual(result['status'],'CLEANUP_FAILED')
+  self.assertEqual(result['terminal_observed'],'RESPONSE_AFTER_BUDGET')
+  self.assertIsNone(result['response'])
+  validate_outcome(result,'a'*32)

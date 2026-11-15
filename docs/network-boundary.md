@@ -126,3 +126,25 @@ reproduced 11/11 focused tests, including real loopback completion/cancellation
 replay, pre-start persistence, injected save failure, concurrent claim, backup/
 restore and rollover refusal. Actual forced termination, power failure and real
 disk-full conditions have not been verified. No enterprise service was connected.
+
+### Cleanup recovery follow-up
+
+A failed `terminate()` syscall no longer skips the bounded `kill()` fallback.
+OS errors from termination/join do not prove cleanup: the worker must actually
+be observed dead. A surviving worker yields `CLEANUP_FAILED`, no response, and
+remote effects remain `UNKNOWN`. That result is durably replayed without sending
+another request. If a response arrived after the deadline and cleanup also fails,
+the late-response marker is preserved without reporting success.
+
+Verification: two failure-injection tests first reproduced the uncaught cleanup
+error, then passed after the fix. Four cleanup tests cover fallback, surviving
+worker, failed kill with durable replay, and late response plus failed cleanup.
+A separate child process exited with code 23 after durable intent and before
+network dispatch; reopening retained INCOMPLETE and blocked reexecution.
+This is controlled process-exit evidence, not a power-loss or post-send crash test.
+The network cancellation tests use only a disposable synthetic localhost service.
+
+Final Windows regression: 228 tests OK (25 skipped); frontend 36/36. The sandboxed
+run first failed two existing hardlink-fixture creation tests with WinError 5;
+a normally authorized Windows rerun passed without code/test relaxation. Optional
+skips and the remaining power-loss/real-disk-full/enterprise tests are not passes.

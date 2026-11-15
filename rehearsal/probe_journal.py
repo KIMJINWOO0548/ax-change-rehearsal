@@ -55,7 +55,7 @@ def validate_outcome(value, attempt_id):
         elapsed = value['elapsed_seconds']
         if type(elapsed) not in (int, float) or not math.isfinite(elapsed) or elapsed < 0:
             raise ValueError('Invalid elapsed time')
-    if 'terminal_observed' in value and (value['terminal_observed'] != 'RESPONSE_AFTER_BUDGET' or value['status'] != 'TIMED_OUT'):
+    if 'terminal_observed' in value and (value['terminal_observed'] != 'RESPONSE_AFTER_BUDGET' or value['status'] not in {'TIMED_OUT', 'CLEANUP_FAILED'}):
         raise ValueError('Invalid late response marker')
     if 'error' in value:
         error = value['error']

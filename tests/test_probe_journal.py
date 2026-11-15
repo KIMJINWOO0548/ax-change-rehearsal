@@ -71,3 +71,13 @@ class ProbeJournalTests(unittest.TestCase):
    second=execute_probe(self.store,12345,request_key=status,runner=runner)
    self.assertEqual(first,second);self.assertEqual(runner.call_count,1)
    self.assertEqual(second['status'],status);self.assertEqual(self.store.list_attempts()[0]['state'],'RECORDED')
+ def test_process_exit_after_intent_blocks_replay_after_restart(self):
+  import subprocess,sys
+  code="from rehearsal.storage import EvidenceStore; from rehearsal.probe_journal import execute_probe; import os,sys; execute_probe(EvidenceStore(sys.argv[1]),12345,request_key='crash',runner=lambda *a,**k: os._exit(23))"
+  completed=subprocess.run([sys.executable,'-c',code,str(self.store.workspace)],timeout=15,capture_output=True)
+  self.assertEqual(completed.returncode,23,completed.stderr)
+  restarted=EvidenceStore(self.store.workspace)
+  self.assertEqual(restarted.list_attempts()[0]['state'],'INCOMPLETE')
+  runner=Mock()
+  with self.assertRaises(ExecutionConflict):execute_probe(restarted,12345,request_key='crash',runner=runner)
+  runner.assert_not_called()

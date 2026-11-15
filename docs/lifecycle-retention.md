@@ -45,3 +45,33 @@ Validation: dedicated tests cover same-key restart, config conflict, failed/inco
 
 ### Reload recovery verification
 Dependency-free frontend contracts cover reload, changing configuration and returning, workspace isolation, denied/corrupt storage, and success acknowledgement. `tests/browser/session-recovery.cjs` is an optional Playwright-core check against a temporary synthetic workspace and an isolated headless Edge profile, not the user's browser. It forwards requests to the real server then aborts their responses to simulate loss: five HTTP requests produce only two completed executions across reload and configuration changes. A recovered success clears only its entry; corrupt storage sends no POST. Run with an installed `playwright-core` resolved normally or through `PLAYWRIGHT_CORE`; no production data or external adapter is used. Browser crashes, power loss and tab-close restoration remain untested.
+
+## Chronological report binding and interrupted transactions
+
+A completed attempt must reference a report appended after its own start in the
+ledger. Configuration equality alone is insufficient: an older unclaimed report
+cannot be used as evidence of a later execution. This uses verified sequence order,
+not the untrusted wall-clock timestamps. A hash-consistent but chronologically
+invalid history is rejected on reopening. Existing valid rows are not migrated.
+This is consistency checking, not authentication against a local owner who can
+rewrite the entire history.
+
+Controlled subprocess interruption tests now cover two actual process exits:
+1. Exit 29 immediately after inserting a report inside its uncommitted SQLite
+   transaction. Reopening rolls back the partial report and retains only the
+   previously committed INCOMPLETE intent. The original request key cannot rerun,
+   and backup/restore preserves that state.
+2. Exit 31 after the report and completion transaction commits but before the
+   caller receives its response. Reopening and resending the same request key
+   returns the one saved report without invoking the runner again.
+
+All reports and inputs are authored synthetic local fixtures. These tests prove
+neither power-loss recovery nor exactly-once effects in an external system.
+No remote business operation was invoked, and unknown remote effects remain
+unknown. This change does not attempt automatic recovery by repeating requests.
+
+Windows verification: lifecycle 15/15; combined lifecycle/idempotency/policy/probe
+journal 45/45; full suite 246 tests OK with 25 optional skips; frontend 36/36.
+The two chronological-binding tests first failed before the validation guard.
+Full suite used normally authorized Windows execution because existing hardlink
+fixtures are blocked by the sandbox. Power interruption remains untested.

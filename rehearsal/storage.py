@@ -123,6 +123,7 @@ class EvidenceStore:
         rows = connection.execute('SELECT seq,payload,previous,hash FROM ledger ORDER BY seq')
         runs, previous, count = {}, ZERO, 0
         attempts = {}
+        run_sequences, attempt_sequences = {}, {}
         for index, (seq, raw, prev, digest) in enumerate(rows, 1):
             count = index
             payload = json.loads(raw, object_pairs_hook=_unique_pairs, parse_constant=_reject_constant)
@@ -137,6 +138,7 @@ class EvidenceStore:
                 record = {'run_id': run_id, 'sha256': sha(report), 'created_at': report['created_at'],
                           'revision': 0, 'review_status': 'UNREVIEWED', 'review_is_approval': False}
                 runs[run_id] = {'report': report, 'record': record, 'events': []}
+                run_sequences[run_id] = index
             elif payload.get('type') == 'review':
                 if set(payload) != {'type', 'run_id', 'event'}: raise StorageError('Unknown review payload')
                 entry = runs[payload['run_id']]; event = payload['event']
@@ -171,6 +173,7 @@ class EvidenceStore:
                     from .app import _validate_configuration
                     _validate_configuration(payload['configuration'])
                 attempts[payload['attempt_id']] = {**payload, 'state': 'INCOMPLETE'}
+                attempt_sequences[payload['attempt_id']] = index
             elif payload.get('type') == 'probe_finished':
                 if set(payload) != {'type', 'attempt_id', 'outcome', 'created_at'}:
                     raise StorageError('Invalid probe finish')
@@ -194,6 +197,10 @@ class EvidenceStore:
                 if payload['state'] == 'COMPLETED':
                     run_id = payload['run_id']
                     if (type(run_id) is not str or run_id not in runs
+                            # Matching configuration alone cannot turn an older
+                            # report into evidence of a later execution. Use
+                            # ledger order, not user-controlled wall-clock text.
+                            or run_sequences[run_id] <= attempt_sequences[payload['attempt_id']]
                             or canonical(runs[run_id]['report']['configuration']) != canonical(attempt['configuration'])
                             or any(x.get('run_id') == run_id for x in attempts.values())):
                         raise StorageError('Execution report mismatch')

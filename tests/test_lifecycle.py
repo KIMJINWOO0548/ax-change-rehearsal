@@ -108,3 +108,86 @@ class LifecycleTests(unittest.TestCase):
             winners=[x for x in pool.map(begin,range(4)) if x is not None]
         self.assertEqual(len(winners),1)
         self.assertEqual(len(store.list_attempts()),1)
+
+    def test_older_report_cannot_complete_a_later_attempt(self):
+        from rehearsal.storage import StorageError
+        value=report();value['configuration']=self.config
+        self.store.save(value)
+        attempt=self.store.begin_attempt(self.config)
+        with self.assertRaises(StorageError):
+            self.store._operate(lambda connection,runs: self.store._finish(connection,attempt,'COMPLETED',value['run_id']))
+        self.assertEqual(self.store.list_attempts()[0]['state'],'INCOMPLETE')
+        self.assertEqual(len(self.store.list_runs()),1)
+
+    def test_hash_valid_but_chronologically_invalid_history_is_rejected(self):
+        from rehearsal.storage import StorageError
+        value=report();value['configuration']=self.config
+        self.store.save(value)
+        attempt=self.store.begin_attempt(self.config)
+        self.store._operate(lambda connection,runs: self.store._append(connection,{
+            'type':'attempt_finished','attempt_id':attempt,'state':'COMPLETED',
+            'run_id':value['run_id'],'created_at':value['created_at']}))
+        with self.assertRaises(StorageError):EvidenceStore(self.store.workspace)
+
+    def test_process_death_during_save_rolls_back_partial_report(self):
+        import subprocess,sys,textwrap
+        from unittest.mock import Mock
+        from rehearsal.server import execute_persisted
+        from rehearsal.storage import ExecutionConflict
+        script=textwrap.dedent('''
+            import os,sys
+            from rehearsal.storage import EvidenceStore
+            from rehearsal.server import execute_persisted
+            from tests.test_storage import report
+            store=EvidenceStore(sys.argv[1])
+            append=store._append
+            def interrupted(connection,payload):
+                append(connection,payload)
+                if payload['type']=='run': os._exit(29)
+            store._append=interrupted
+            def runner(config):
+                value=report();value['configuration']=config;return value
+            execute_persisted(store,{'faq_version':'corrected','api_version':'corrected'},runner,request_key='crash-save')
+        ''')
+        child=subprocess.run([sys.executable,'-c',script,str(self.store.workspace)],capture_output=True,timeout=20)
+        self.assertEqual(child.returncode,29,child.stderr)
+        reopened=EvidenceStore(self.store.workspace)
+        self.assertEqual(reopened.list_runs(),[])
+        self.assertEqual(reopened.list_attempts()[0]['state'],'INCOMPLETE')
+        runner=Mock()
+        with self.assertRaises(ExecutionConflict):execute_persisted(reopened,self.config,runner,request_key='crash-save')
+        runner.assert_not_called()
+        create_backup(reopened.workspace,self.root/'crash-backup')
+        restore_backup(self.root/'crash-backup',self.root/'crash-restored')
+        restored=EvidenceStore(self.root/'crash-restored')
+        self.assertEqual(restored.list_runs(),[])
+        self.assertEqual(restored.list_attempts()[0]['state'],'INCOMPLETE')
+
+    def test_process_death_after_commit_replays_without_reexecution(self):
+        import subprocess,sys,textwrap
+        from unittest.mock import Mock
+        from rehearsal.server import execute_persisted
+        script=textwrap.dedent('''
+            import os,sys
+            from rehearsal.storage import EvidenceStore
+            from rehearsal.server import execute_persisted
+            from tests.test_storage import report
+            store=EvidenceStore(sys.argv[1])
+            save=store.save
+            def interrupted(value,**kwargs):
+                save(value,**kwargs)
+                os._exit(31)
+            store.save=interrupted
+            def runner(config):
+                value=report();value['configuration']=config;return value
+            execute_persisted(store,{'faq_version':'corrected','api_version':'corrected'},runner,request_key='crash-response')
+        ''')
+        child=subprocess.run([sys.executable,'-c',script,str(self.store.workspace)],capture_output=True,timeout=20)
+        self.assertEqual(child.returncode,31,child.stderr)
+        reopened=EvidenceStore(self.store.workspace)
+        self.assertEqual(reopened.list_attempts()[0]['state'],'COMPLETED')
+        runner=Mock()
+        result=execute_persisted(reopened,self.config,runner,request_key='crash-response')
+        runner.assert_not_called()
+        self.assertEqual(result['run_id'],reopened.list_attempts()[0]['run_id'])
+        self.assertEqual(len(reopened.list_runs()),1)

@@ -119,3 +119,13 @@ python run_workbench.py
 ## 공개 범위와 라이선스
 
 이 저장소에는 합성 예시와 프로젝트 소스만 포함합니다. 원본 업로드 ZIP, 로컬 경로·인증정보·개인 연락처는 포함하지 않습니다. 원본 패키지에 재사용 라이선스가 없으므로 임의로 오픈소스 라이선스를 추가하지 않았습니다. 공개 열람과 소스 재사용 허가는 다르며, 재사용 조건은 저장소 소유자에게 확인해야 합니다.
+
+## Source evidence inspection (offline)
+
+`python inspect_sources.py --policy-version returns-20261201` prints cited
+Markdown blocks and exact before/after changes for a registered synthetic policy.
+`returns-20270115` selects the second fixture. Output retains unchanged exclusions,
+line ranges, content hashes and explicit human-review requirements. It does not
+extract executable rules or interpret legal meaning. No UI change, network call,
+PDF/OCR or arbitrary document import is included. See
+[the bounded source-evidence design](docs/source-evidence-design.md).

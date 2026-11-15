@@ -149,7 +149,7 @@ class EvidenceStore:
                     raise StorageError('Invalid review binding')
                 entry['record'].update(revision=event['revision'], review_status=event['status'])
                 entry['events'].append({**event, 'event_sha256': digest, 'previous_sha256': prev})
-            elif payload.get('type') == 'attempt_started':
+            elif payload.get('type') in {'attempt_started', 'probe_started'}:
                 if (set(payload) not in ({'type', 'attempt_id', 'configuration', 'created_at'},
                                              {'type', 'attempt_id', 'configuration', 'created_at', 'request_sha256'})
                         or type(payload['attempt_id']) is not str
@@ -163,9 +163,24 @@ class EvidenceStore:
                             or any(c not in '0123456789abcdef' for c in digest_key)
                             or any(a.get('request_sha256') == digest_key for a in attempts.values())):
                         raise StorageError('Invalid request binding')
-                from .app import _validate_configuration
-                _validate_configuration(payload['configuration'])
+                if payload['type'] == 'probe_started':
+                    from .probe_journal import validate_configuration
+                    validate_configuration(payload['configuration'])
+                    if 'request_sha256' not in payload: raise StorageError('Probe request binding missing')
+                else:
+                    from .app import _validate_configuration
+                    _validate_configuration(payload['configuration'])
                 attempts[payload['attempt_id']] = {**payload, 'state': 'INCOMPLETE'}
+            elif payload.get('type') == 'probe_finished':
+                if set(payload) != {'type', 'attempt_id', 'outcome', 'created_at'}:
+                    raise StorageError('Invalid probe finish')
+                attempt = attempts.get(payload['attempt_id'])
+                if (not attempt or attempt['type'] != 'probe_started' or attempt['state'] != 'INCOMPLETE'
+                        or type(payload['created_at']) is not str or len(payload['created_at']) > 64):
+                    raise StorageError('Invalid probe binding')
+                from .probe_journal import validate_outcome
+                validate_outcome(payload['outcome'], payload['attempt_id'])
+                attempt.update(state='RECORDED', outcome=payload['outcome'], finished_at=payload['created_at'])
             elif payload.get('type') == 'attempt_finished':
                 if (set(payload) != {'type', 'attempt_id', 'state', 'run_id', 'created_at'}
                         or type(payload['attempt_id']) is not str
@@ -175,7 +190,7 @@ class EvidenceStore:
                         or type(payload['created_at']) is not str or len(payload['created_at']) > 64):
                     raise StorageError('Invalid execution finish')
                 attempt = attempts[payload['attempt_id']]
-                if attempt['state'] != 'INCOMPLETE': raise StorageError('Duplicate execution finish')
+                if attempt['state'] != 'INCOMPLETE' or attempt['type'] != 'attempt_started': raise StorageError('Invalid execution finish')
                 if payload['state'] == 'COMPLETED':
                     run_id = payload['run_id']
                     if (type(run_id) is not str or run_id not in runs
@@ -240,9 +255,19 @@ class EvidenceStore:
             raise ValueError('Invalid idempotency key')
         return self._claim_attempt(configuration, sha(request_key))
 
-    def _claim_attempt(self, configuration, request_sha256):
-        from .app import _validate_configuration
-        _validate_configuration(configuration)
+    def claim_probe(self, configuration, request_key):
+        if (type(request_key) is not str or not 1 <= len(request_key) <= 128
+                or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_' for c in request_key)):
+            raise ValueError('Invalid probe request key')
+        return self._claim_attempt(configuration, sha({'kind': 'probe', 'key': request_key}), probe=True)
+
+    def _claim_attempt(self, configuration, request_sha256, *, probe=False):
+        if probe:
+            from .probe_journal import validate_configuration
+            validate_configuration(configuration)
+        else:
+            from .app import _validate_configuration
+            _validate_configuration(configuration)
         # Canonical roundtrip prevents a caller mutating the recorded config.
         configuration = json.loads(canonical(configuration))
         if 'case_ids' in configuration: configuration['case_ids'] = sorted(configuration['case_ids'])
@@ -258,12 +283,22 @@ class EvidenceStore:
             reserved = sum(item['state'] == 'INCOMPLETE' for item in attempts.values())
             if len(runs) + reserved >= self.limit: raise StorageLimit('Storage full or reserved')
             if len(attempts) >= MAX_ATTEMPTS: raise StorageLimit('Execution journal full')
-            payload = {'type': 'attempt_started', 'attempt_id': attempt_id,
+            payload = {'type': 'probe_started' if probe else 'attempt_started', 'attempt_id': attempt_id,
                          'configuration': configuration,
                          'created_at': dt.datetime.now(dt.timezone.utc).isoformat()}
             if request_sha256 is not None: payload['request_sha256'] = request_sha256
             self._append(connection, payload)
             return {**payload, 'state': 'INCOMPLETE'}, True
+        return self._operate(action)
+
+    def record_probe(self, attempt_id, outcome):
+        from .probe_journal import validate_outcome
+        validate_outcome(outcome, attempt_id)
+        def action(connection, runs):
+            self._require_pending(connection, attempt_id)
+            self._append(connection, {'type': 'probe_finished', 'attempt_id': attempt_id,
+                         'outcome': outcome, 'created_at': dt.datetime.now(dt.timezone.utc).isoformat()})
+            self._verify(connection)
         return self._operate(action)
 
     def _require_pending(self, connection, attempt_id):

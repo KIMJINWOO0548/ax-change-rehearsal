@@ -51,7 +51,7 @@ def _worker(channel, port, probe_id, timeout):
             connection.close()
         channel.close()
 
-def probe(port, *, timeout=5.0, cancel=None):
+def probe(port, *, timeout=5.0, cancel=None, probe_id=None):
     """Bounded local-network probe. Call only for a service you own for testing.
 
     Deadline budget includes spawn/network/parse; OS process operations are not preemptible.
@@ -63,6 +63,9 @@ def probe(port, *, timeout=5.0, cancel=None):
         raise ValueError('Invalid port')
     if type(timeout) not in (int, float) or not math.isfinite(timeout) or not .05 <= timeout <= 30:
         raise ValueError('Invalid deadline')
+    if probe_id is None: probe_id = uuid.uuid4().hex
+    if type(probe_id) is not str or len(probe_id) != 32 or any(c not in '0123456789abcdef' for c in probe_id):
+        raise ValueError('Invalid probe ID')
     started = time.monotonic()
     result = {'synthetic_only': True, 'scope': 'disposable-loopback-probe',
               'status': 'FAILED', 'dispatch': 'NOT_STARTED', 'remote_effects': 'UNKNOWN',
@@ -71,7 +74,7 @@ def probe(port, *, timeout=5.0, cancel=None):
         return {**result, 'status': 'CANCELLED', 'events': ['PREPARED', 'CANCELLED_BEFORE_START']}
     context = multiprocessing.get_context('spawn')
     receiver, sender = context.Pipe(duplex=False)
-    worker = context.Process(target=_worker, args=(sender, port, uuid.uuid4().hex, timeout), daemon=True)
+    worker = context.Process(target=_worker, args=(sender, port, probe_id, timeout), daemon=True)
     spawned = False
     try:
         worker.start(); spawned = True; sender.close()
@@ -131,11 +134,20 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description='Probe a disposable loopback test service only; not a business connector.')
     parser.add_argument('--port', type=int, required=True)
     parser.add_argument('--timeout', type=float, default=5)
+    parser.add_argument('--workspace', help='Existing evidence workspace for durable diagnostic intent')
+    parser.add_argument('--request-key', help='Non-secret stable retry key; required with --workspace')
     args = parser.parse_args(argv)
+    if bool(args.workspace) != bool(args.request_key):
+        parser.error('--workspace and --request-key must be provided together')
     cancelled = threading.Event()
     previous = signal.signal(signal.SIGINT, lambda *_: cancelled.set())
     try:
-        value = probe(args.port, timeout=args.timeout, cancel=cancelled)
+        if args.workspace:
+            from .storage import EvidenceStore
+            from .probe_journal import execute_probe
+            value = execute_probe(EvidenceStore(args.workspace), args.port, request_key=args.request_key, timeout=args.timeout, cancel=cancelled)
+        else:
+            value = probe(args.port, timeout=args.timeout, cancel=cancelled)
         print(json.dumps(value, ensure_ascii=True, sort_keys=True))
         return 0 if value['status'] == 'COMPLETED' else 2
     finally:

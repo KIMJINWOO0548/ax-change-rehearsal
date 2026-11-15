@@ -28,9 +28,9 @@ Local cancellation does not assert remote cancellation, rollback or absence of
 remote work. Tests deliberately show the disposable server continuing after the
 local worker has stopped. There is no retry.
 
-The returned PREPARED/start/send/terminal events are diagnostic in-memory evidence,
-not a crash-durable ledger. This probe is deliberately separate from the current
-synthetic EvidenceStore. Registering production write adapters requires durable
+Without --workspace, returned PREPARED/start/send/terminal events remain diagnostic
+in-memory evidence, not a crash-durable ledger. The optional durable mode below
+adds separate diagnostic records to the existing EvidenceStore. Registering production write adapters requires durable
 before-effect intent, independent observations, per-operation idempotency and
 remote cancellation/cleanup contracts first. None is inferred from these tests.
 
@@ -84,3 +84,45 @@ After the queued-failure and late-response corrections, the final native full ru
 was 212 tests OK with 25 skips. Independent pure race/error evidence checks were
 3/3; the preceding live-plus-pure review was 9/9. These later results do not erase
 the earlier Windows-host failures documented above. Remote CI is a separate gate.
+
+
+## Optional durable diagnostic mode
+`python -m rehearsal.network_probe --port <test-port> --timeout 5 --workspace <workspace> --request-key <stable-non-secret-key>`
+
+Both extra options are required together. The existing SQLite hash chain now
+accepts separate `probe_started` and `probe_finished` events. Before spawning a
+worker, the start is committed with the validated port/deadline and a namespaced
+request-key hash. The committed attempt ID also becomes the HTTP probe nonce;
+a completed response must match it. No customer input or arbitrary endpoint is
+accepted. This does not turn the diagnostic into a business adapter.
+
+`INCOMPLETE` means the final outcome was not durably confirmed. Runner exceptions,
+process interruption and storage/validation failure after startup leave it there.
+A repeated key cannot execute it again. A finished diagnostic is `RECORDED`, not
+business `COMPLETED`: inspect its separate outcome.status and remote_effects.
+CANCELLED, TIMED_OUT, FAILED and CLEANUP_FAILED are preserved, with remote effects
+UNKNOWN. Repeating a recorded request returns its saved outcome without another
+network request, including after reopening or backup/restore. Changing port or
+deadline with the same key conflicts. Different keys are new explicit intents;
+keys are scoped to the workspace, not globally to a service.
+
+`manage_evidence.py --workspace <workspace> executions` and the existing read-only
+`/api/executions` include these typed diagnostics. They never appear as business
+reports or pass counts. Backup/restore preserves their ledger; rollover refuses
+an incomplete diagnostic. The existing total attempt and ledger bounds still
+apply; pending diagnostics conservatively reserve capacity with other attempts.
+No existing rows or files are deleted or migrated. Older binaries reject the new
+events; do not downgrade a used workspace.
+
+Only the pre-start intent and final outcome are durable, not every intermediate
+network event. A crash between send and final commit remains INCOMPLETE, not
+assumed cancelled or safe to repeat. Full forced-crash/power-loss recovery and
+production HTTP cancellation contracts are not tested. The unkeyed local ledger
+is integrity checking, not authentication against its owner rewriting history.
+
+Durable-mode verification: native full regression 223 tests OK with 25 skips;
+frontend 36/36; package structure 3 packs/36 scenarios. Independent Windows review
+reproduced 11/11 focused tests, including real loopback completion/cancellation
+replay, pre-start persistence, injected save failure, concurrent claim, backup/
+restore and rollover refusal. Actual forced termination, power failure and real
+disk-full conditions have not been verified. No enterprise service was connected.

@@ -69,6 +69,43 @@ class ProbeTests(unittest.TestCase):
   self.assertTrue(result['local_cleanup_verified'])
   self.assertEqual(result['remote_effects'],'UNKNOWN')
 
+ def test_real_probe_is_recorded_and_retry_does_not_resend(self):
+  import tempfile
+  from rehearsal.storage import EvidenceStore
+  from rehearsal.probe_journal import execute_probe
+  with tempfile.TemporaryDirectory() as directory:
+   store=EvidenceStore(directory)
+   first=execute_probe(store,self.server.server_port,request_key='real-probe')
+   self.assertEqual(first['status'],'COMPLETED',first)
+   second=execute_probe(EvidenceStore(directory),self.server.server_port,request_key='real-probe')
+   self.assertEqual(first,second);self.assertEqual(len(self.requests),1)
+   item=store.list_attempts()[0]
+   self.assertEqual(item['state'],'RECORDED');self.assertEqual(item['type'],'probe_started')
+   self.assertEqual(first['response']['probe_id'],item['attempt_id'])
+
+
+ def test_cancelled_durable_probe_replays_unknown_without_resending(self):
+  import tempfile
+  from rehearsal.storage import EvidenceStore
+  from rehearsal.probe_journal import execute_probe
+  self.mode='slow';cancel=threading.Event()
+  def trigger():
+   deadline=time.monotonic()+5
+   while not self.requests and time.monotonic()<deadline:time.sleep(.01)
+   cancel.set()
+  t=threading.Thread(target=trigger);t.start()
+  with tempfile.TemporaryDirectory() as directory:
+   store=EvidenceStore(directory)
+   first=execute_probe(store,self.server.server_port,request_key='cancelled',timeout=6,cancel=cancel)
+   t.join(6)
+   self.assertEqual(first['status'],'CANCELLED',first)
+   self.assertEqual(first['remote_effects'],'UNKNOWN')
+   second=execute_probe(EvidenceStore(directory),self.server.server_port,request_key='cancelled',timeout=6)
+   self.assertEqual(second,first);self.assertEqual(len(self.requests),1)
+   self.assertEqual(store.list_attempts()[0]['state'],'RECORDED')
+  self.assertTrue(self.finished.wait(2))
+
+
 class FailureEvidenceTests(unittest.TestCase):
  def test_connect_error_retains_os_codes_without_raw_exception(self):
   from unittest.mock import patch

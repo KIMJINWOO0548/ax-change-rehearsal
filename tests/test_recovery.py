@@ -56,6 +56,25 @@ class RecoveryTests(unittest.TestCase):
                 self.assertEqual(folder.stat().st_mode & 0o777, 0o700)
                 for path in folder.iterdir(): self.assertEqual(path.stat().st_mode & 0o777, 0o600)
 
+    def test_existing_handle_cannot_write_a_backup_moved_to_workspace_path(self):
+        self.bundle()
+        # A server/store may outlive an operator replacing its workspace path.
+        old_workspace = self.root / 'old-workspace'
+        self.workspace.rename(old_workspace)
+        self.backup.rename(self.workspace)
+        before = {p.name: p.read_bytes() for p in self.workspace.iterdir()}
+        from rehearsal.storage import StorageError
+        for action in (self.store.list_runs,
+                       lambda: self.store.save(report()),
+                       lambda: self.store.review(self.report['run_id'], {
+                           'expected_revision': self.detail['record']['revision'],
+                           'report_sha256': self.detail['record']['sha256'],
+                           'status': 'REVIEWED', 'note': 'must not write backup'})):
+            with self.assertRaises(StorageError):
+                action()
+        self.assertEqual(before, {p.name: p.read_bytes() for p in self.workspace.iterdir()})
+        inspect_backup(self.workspace)
+
     def test_missing_source_never_created(self):
         missing = self.root / 'missing'
         with self.assertRaises(RecoveryError): create_backup(missing, self.backup)

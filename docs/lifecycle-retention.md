@@ -118,3 +118,13 @@ missing ID or malformed timestamp is invalid evidence, not MATCH. Attached
 `record` review metadata remains outside deterministic evidence and never grants
 deployment approval. This adds no remote execution, migration, or rewrite of
 existing history; storage integrity must still be checked separately.
+
+## Long-lived handles and recovery paths
+
+Every evidence connection rechecks the workspace for a recovery manifest or
+incomplete marker, not just store construction. If an operator replaces a
+workspace directory with a backup bundle while a handle survives, that handle
+fails closed before opening SQLite; the bundle bytes remain untouched. Restore
+into a new path and restart the writer as documented. This is not synchronization
+against simultaneous filesystem swaps by a local owner: stop writers before
+recovery or rollover. No existing ledger is migrated or rewritten.

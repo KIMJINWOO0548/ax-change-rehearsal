@@ -71,9 +71,7 @@ class EvidenceStore:
                 if part.is_symlink(): raise StorageError('Unsafe workspace')
             if not self.workspace.exists(): self.workspace.mkdir(mode=0o700)
             self._check(self.workspace, True)
-            if any((self.workspace / name).exists() or (self.workspace / name).is_symlink()
-                   for name in ('.recovery-incomplete', 'manifest.json')):
-                raise StorageError('Recovery bundle is not a writable workspace')
+            self._check_workspace_role()
             if not self.path.exists():
                 fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, 'O_NOFOLLOW', 0), 0o600)
                 os.close(fd)
@@ -95,10 +93,18 @@ class EvidenceStore:
             raise StorageError('Storage must be private and owned by current user')
         if not directory and info.st_nlink != 1: raise StorageError('Unsafe storage links')
 
+    def _check_workspace_role(self):
+        # Handles can outlive a directory replacement or recovery marker. Never
+        # let an already-open store mutate an immutable or incomplete bundle.
+        if any((self.workspace / name).exists() or (self.workspace / name).is_symlink()
+               for name in ('.recovery-incomplete', 'manifest.json')):
+            raise StorageError('Recovery bundle is not a writable workspace')
+
     def _connect(self):
         for part in [self.workspace, *self.workspace.parents]:
             if part.is_symlink(): raise StorageError('Unsafe workspace')
         self._check(self.workspace, True)
+        self._check_workspace_role()
         self._check(self.path)
         if self.path.stat().st_size > MAX_DATABASE_BYTES: raise StorageError('Storage too large')
         for suffix in ('-journal', '-wal', '-shm'):

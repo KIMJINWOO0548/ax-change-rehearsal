@@ -7,4 +7,5 @@ Executed on Gamja:
 - Node frontend suites: 32 passed, zero failures.
 - Package validation: 3 synthetic packs, 36 scenarios passed structural checks, not AI quality.
 
-Not verified: real enterprise adapters, paid AI, browser visual acceptance, optional encryption paths skipped in this environment, or current remote CI. Existing UI feature branch/release artifacts remain separate until an explicit diff and regression gate. The 100-run local retention boundary remains.
+Not verified: real enterprise adapters, paid AI, browser visual acceptance, optional encryption paths skipped in this environment, or current remote CI. Ancestry verification shows the candidate contains main (0/2 behind/ahead) and UI feature a0152c2 (0/1); old packaged release artifacts were not rebuilt or certified. The 100-run local retention boundary remains.
+

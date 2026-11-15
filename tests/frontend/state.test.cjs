@@ -14,20 +14,21 @@ class Node {
  click(){return this.handlers.click?.({preventDefault(){}});}
 }
 const descendants=node=>node.children.flatMap(n=>[n,...descendants(n)]);
-function setup({invalidPolicy=false,persistent=false}={}){
+function memoryStorage(){const data=new Map();return {getItem:k=>data.get(k)??null,setItem:(k,v)=>data.set(k,v),removeItem:k=>data.delete(k)};}
+function setup({invalidPolicy=false,persistent=false,session=memoryStorage(),scope='a'.repeat(64)}={}){
  const ids={},html=fs.readFileSync('web/index.html','utf8');
  for(const m of html.matchAll(/<([a-z][a-z0-9]*)\b[^>]*id="([^"]+)"/g))ids[m[2]]=new Node(m[1]);
  const radios=['faq_version','api_version'].flatMap(name=>['stale','corrected'].map(value=>Object.assign(new Node('input'),{name,value,checked:value==='stale'})));
  const links=Array.from({length:4},()=>new Node('a'));
  const policy={path:'policy.md',sha256:'hash',lines:[{number:7,text:'return rule'}]};
  const cases=[{id:'S01',label:'Case <script>',intended_behavior:'CHANGE',tags:['boundary']},{id:'S02',label:'Missing input',intended_behavior:'INDETERMINATE',tags:['missing']}];
- const context={storage:{enabled:persistent},csrf_token:'test-token',policy_review_valid:!invalidPolicy,policy:{before:policy,after:policy},defaults:{faq_version:'stale',api_version:'stale'},project:{scenario_count:2},cases,change:{old_window_days:14,new_window_days:30,effective_date:'2026-12-01',preserved:[]},limits:[]};
+ const context={storage:{enabled:persistent,request_scope:scope},csrf_token:'test-token',policy_review_valid:!invalidPolicy,policy:{before:policy,after:policy},defaults:{faq_version:'stale',api_version:'stale'},project:{scenario_count:2},cases,change:{old_window_days:14,new_window_days:30,effective_date:'2026-12-01',preserved:[]},limits:[]};
  const calls=[];let next=null,counter=0;
  const document={getElementById:id=>ids[id],createElement:tag=>new Node(tag),body:new Node('body'),
   querySelectorAll(selector){if(selector.includes('.rail'))return links;if(selector==='#case-rows button')return descendants(ids['case-rows']).filter(n=>n.tag==='button');if(selector.includes('input'))return radios.filter(r=>selector.includes(r.name));return[];},
   querySelector(selector){if(selector.includes('.rail'))return links[0];return radios.find(r=>r.checked&&selector.includes(r.name));}};
  const fetch=async(path,options)=>{calls.push({path,options});return path==='/api/context'?{ok:true,json:async()=>context}:next();};
- const sandbox={crypto:require('node:crypto').webcrypto,document,fetch,console,AbortController,setTimeout,clearTimeout,Blob,URL,Set,Map,Option:class extends Node{constructor(text,value){super('option');this.textContent=text;this.value=value;}}};
+ const sandbox={sessionStorage:session,crypto:require('node:crypto').webcrypto,document,fetch,console,AbortController,setTimeout,clearTimeout,Blob,URL,Set,Map,Option:class extends Node{constructor(text,value){super('option');this.textContent=text;this.value=value;}}};
  vm.createContext(sandbox);vm.runInContext(fs.readFileSync('web/review.js','utf8'),sandbox);vm.runInContext(source,sandbox);
  const settle=()=>new Promise(resolve=>setImmediate(resolve));
  const result=()=>{
@@ -136,4 +137,32 @@ test('persistent failed request reuses key; completed and changed requests get n
  await s.run();assert.notEqual(keys()[3],keys()[0]);
  s.setNext(async()=>{throw new Error('lost');});await s.run();
  s.change('faq_version','corrected');await s.run();assert.notEqual(keys()[4],keys()[5]);
+});
+
+test('pending keys survive reload, another configuration, and isolate workspaces',async()=>{
+ const session=memoryStorage();
+ const key=s=>s.calls.filter(c=>c.path==='/api/run').at(-1).options.headers['Idempotency-Key'];
+ const a=setup({persistent:true,session});await a.settle();a.setNext(async()=>{throw Error('lost');});await a.run();const original=key(a);
+ a.change('faq_version','corrected');await a.run();assert.notEqual(key(a),original);
+ a.change('faq_version','stale');await a.run();assert.equal(key(a),original);
+ const b=setup({persistent:true,session});await b.settle();b.setNext(async()=>{throw Error('lost');});await b.run();assert.equal(key(b),original);
+ const c=setup({persistent:true,session,scope:'b'.repeat(64)});await c.settle();c.setNext(async()=>{throw Error('lost');});await c.run();assert.notEqual(key(c),original);
+});
+test('storage denied or malformed blocks execution before POST',async()=>{
+ for(const session of [{getItem(){throw Error('denied');}}, {getItem(){return 'invalid';}}]){
+  const s=setup({persistent:true,session});await s.settle();s.setNext(async()=>s.good());await s.run();
+  assert.equal(s.calls.filter(c=>c.path==='/api/run').length,0);
+ }
+});
+
+test('quota failure, silent failed writes and full store never send untracked requests',async()=>{
+ const full=Array.from({length:64},(_,i)=>({scope:'a'.repeat(64),body:'body'+i,key:'key'+i}));
+ for(const session of [
+  {getItem(){return null;},setItem(){throw Error('quota');}},
+  {getItem(){return null;},setItem(){}},
+  {getItem(){return JSON.stringify(full);},setItem(){throw Error('must not evict');}}
+ ]){
+  const s=setup({persistent:true,session});await s.settle();s.setNext(async()=>s.good());await s.run();
+  assert.equal(s.calls.filter(c=>c.path==='/api/run').length,0);
+ }
 });

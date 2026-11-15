@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import os
 import re
 import secrets
 import uuid
@@ -53,6 +55,8 @@ class WorkbenchServer(ThreadingHTTPServer):
 
     def __init__(self, port, workspace=None):
         self.store = EvidenceStore(workspace) if workspace is not None else None
+        self.request_scope = (hashlib.sha256(os.path.normcase(str(self.store.workspace.resolve())).encode('utf-8')).hexdigest()
+                              if self.store is not None else None)
         self.csrf_token = secrets.token_urlsafe(32)
         super().__init__(('127.0.0.1', port), WorkbenchHandler)
 
@@ -115,7 +119,7 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                     self.server.store.list_runs()  # Fail closed if the ledger was altered.
                     context['limits'] = [line for line in context['limits'] if not line.startswith('실행은 메모리에')]
                     context['limits'].append('로컬 합성 기록만 저장합니다. 암호화·인증·서명은 없으며 파일 소유자는 기록과 해시를 다시 쓸 수 있습니다. 검토 표시는 배포 승인이 아닙니다.')
-                self._send(200, {**context, 'csrf_token': self.server.csrf_token, 'storage': storage_info(self.server.store is not None)})
+                self._send(200, {**context, 'csrf_token': self.server.csrf_token, 'storage': {**storage_info(self.server.store is not None), 'request_scope': self.server.request_scope}})
             except StorageError:
                 self._storage_error(StorageError())
             except Exception:

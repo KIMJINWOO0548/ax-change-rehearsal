@@ -258,6 +258,21 @@ class PersistentServerTests(unittest.TestCase):
         self.assertEqual(self.post(**{'Idempotency-Key':'bad key'})[0],400)
 
 
+    def test_workspace_scope_is_stable_and_separate(self):
+        from rehearsal.server import make_server
+        from pathlib import Path
+        scope=json.loads(self.request()[2])['storage']['request_scope']
+        self.assertRegex(scope,r'^[a-f0-9]{64}$')
+        same=make_server(0,workspace=self.directory.name)
+        other=make_server(0,workspace=Path(self.directory.name)/'next')
+        try:
+            self.assertEqual(same.request_scope,scope)
+            self.assertNotEqual(other.request_scope,scope)
+            self.assertNotIn(self.directory.name,json.dumps(json.loads(self.request()[2])))
+        finally:
+            same.server_close();other.server_close()
+
+
 class EphemeralHistoryTests(unittest.TestCase):
     setUpClass = classmethod(ServerTests.setUpClass.__func__)
     tearDownClass = classmethod(ServerTests.tearDownClass.__func__)

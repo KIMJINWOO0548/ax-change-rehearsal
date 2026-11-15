@@ -271,7 +271,36 @@
     const expectedReadiness=actual.FAIL?'BLOCKED':actual.INCONCLUSIVE?'REVIEW_REQUIRED':!result.scope.complete?'PARTIAL_SCOPE':'PASS_WITHIN_REGISTERED_SCOPE';
     if(result.readiness!==expectedReadiness)throw new Error('준비 상태와 사례별 판정·실행 범위가 일치하지 않습니다.');
   }
-  let pendingExecution = null;
+  const pendingStorageName='ax.pending-executions.v1';
+  function pendingEntries(){
+    const raw=sessionStorage.getItem(pendingStorageName);
+    if(raw===null)return [];
+    if(raw.length>150000)throw new Error('Pending request storage is too large. Inspect saved executions before clearing it.');
+    const entries=JSON.parse(raw);
+    if(!Array.isArray(entries)||entries.length>64||entries.some(e=>!e||Object.keys(e).sort().join()!=='body,key,scope'||
+       typeof e.body!=='string'||e.body.length>2048||typeof e.scope!=='string'||! /^[a-f0-9]{64}$/.test(e.scope)||
+       typeof e.key!=='string'||! /^[a-zA-Z0-9_-]{1,128}$/.test(e.key))||
+       new Set(entries.map(e=>e.scope+'|'+e.body)).size!==entries.length)
+      throw new Error('Pending request storage is invalid. Inspect saved executions before clearing it.');
+    return entries;
+  }
+  function savePending(entries){
+    const value=JSON.stringify(entries);sessionStorage.setItem(pendingStorageName,value);
+    if(sessionStorage.getItem(pendingStorageName)!==value)throw new Error('Could not update pending request storage. Inspect saved executions before retrying.');
+  }
+  function requestIdentity(body){
+    const scope=state.context.storage.request_scope;
+    if(typeof scope!=='string'||! /^[a-f0-9]{64}$/.test(scope))throw new Error('Workspace identity is unavailable. Reload the server context.');
+    const entries=pendingEntries();let entry=entries.find(e=>e.scope===scope&&e.body===body);
+    if(!entry){
+      if(entries.length>=64)throw new Error('Pending request storage is full. Inspect saved executions before clearing it.');
+      entry={scope,body,key:crypto.randomUUID()};entries.push(entry);savePending(entries);
+    }
+    return entry;
+  }
+  function acknowledgeRequest(entry){
+    if(entry)savePending(pendingEntries().filter(e=>!(e.scope===entry.scope&&e.body===entry.body&&e.key===entry.key)));
+  }
   async function run(event) {
     event.preventDefault();
     if(state.busy||!state.context||state.context.policy_review_valid===false)return;
@@ -281,13 +310,11 @@
     try {
       const body=JSON.stringify(config);
       const headers={'Content-Type':'application/json','X-CSRF-Token':state.context.csrf_token};
-      if(state.context.storage?.enabled===true){
-        if(!pendingExecution||pendingExecution.body!==body)pendingExecution={body,key:crypto.randomUUID()};
-        headers['Idempotency-Key']=pendingExecution.key;
-      }
+      const pending=state.context.storage?.enabled===true?requestIdentity(body):null;
+      if(pending)headers['Idempotency-Key']=pending.key;
       const result=await request('/api/run',{method:'POST',headers,body});
       if(token!==state.request||revision!==state.revision) {status('설정이 변경되어 진행 중인 응답을 사용하지 않았습니다. 다시 실행하세요.','warning');return;}
-      validateResult(result,config);pendingExecution=null;state.result=result;state.stale=false;
+      validateResult(result,config);acknowledgeRequest(pending);state.result=result;state.stale=false;
       archive?.afterRun(result);
       state.history=[result,...state.history.filter(r=>r.run_id!==result.run_id)].slice(0,8);renderResult();
     } catch(error) {

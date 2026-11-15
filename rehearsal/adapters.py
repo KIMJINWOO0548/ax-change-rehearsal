@@ -1,7 +1,8 @@
 """Trusted mock adapters. They receive business input, never fixture oracles.
 
 Environments isolate in-memory state; this is not an OS/process security sandbox.
-No module in this prototype performs network I/O or invokes a language model.
+These business mock adapters perform no network I/O or language-model calls.
+The separate opt-in network_probe diagnostic only contacts disposable loopback services.
 """
 from __future__ import annotations
 

@@ -75,3 +75,36 @@ journal 45/45; full suite 246 tests OK with 25 optional skips; frontend 36/36.
 The two chronological-binding tests first failed before the validation guard.
 Full suite used normally authorized Windows execution because existing hardlink
 fixtures are blocked by the sandbox. Power interruption remains untested.
+
+## Completion-row reservation
+
+Execution starts now reserve ledger rows before invoking a runner: two for a
+synthetic report plus its completion, or one for a disposable probe's terminal
+record. Reservations are derived from existing INCOMPLETE events under the same
+SQLite write transaction, so reopening needs no schema migration or side file.
+Direct saves, reviews and other new starts cannot spend those reserved rows.
+Successful completion consumes its own reservation; a failed business attempt
+uses one terminal row and releases the unused report row. Finished request-key
+lookups still return the saved outcome even when no new rows fit.
+
+This supersedes the earlier ledger-row reservation limitation, but not the disk
+byte limitation. Filesystem I/O failures, physical disk exhaustion and OS/power
+loss can still leave INCOMPLETE evidence. No automatic retry or external-effect
+claim has been added. Existing valid history remains readable and unmodified.
+
+Tests first reproduced late invocation without terminal capacity and reservation
+loss to a direct save or review. Added cases cover an eight-thread race for the
+last three rows, failure release, probe two-row admission and saved replay at the
+limit, and mixed business/probe reservations surviving a reopen and completing.
+
+Windows verification: focused lifecycle/idempotency/probe-journal 38/38; full
+suite 253 tests OK with 25 optional skips; frontend 36/36. These are local
+synthetic checks, not enterprise integration or disk-capacity certification.
+
+Independent review: focused 38/38 and a 99-report plus one pending reservation
+boundary passed. The reviewer's full 253-test sandbox run failed only two existing
+hardlink fixtures (WinError 5, 25 skips); those two passed separately under normal
+Windows permissions. That is not a single independent full-suite pass. The full
+253-test successful run above was the implementer's normally authorized run.
+Previously over-reserved legacy pending history remains readable but is not
+retroactively repaired; new admission protection does not create missing space.

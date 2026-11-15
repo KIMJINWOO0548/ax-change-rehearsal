@@ -191,3 +191,76 @@ class LifecycleTests(unittest.TestCase):
         runner.assert_not_called()
         self.assertEqual(result['run_id'],reopened.list_attempts()[0]['run_id'])
         self.assertEqual(len(reopened.list_runs()),1)
+
+    def test_start_reserves_terminal_rows_before_runner(self):
+        from unittest.mock import Mock
+        from rehearsal.server import execute_persisted
+        runner=Mock()
+        with patch('rehearsal.storage.MAX_LEDGER_ROWS',2):
+            with self.assertRaises(StorageLimit):execute_persisted(self.store,self.config,runner)
+        runner.assert_not_called()
+        self.assertEqual(self.store.list_attempts(),[])
+
+    def test_direct_save_cannot_consume_reserved_completion_rows(self):
+        value=report();value['configuration']=self.config
+        with patch('rehearsal.storage.MAX_LEDGER_ROWS',3):
+            attempt=self.store.begin_attempt(self.config)
+            with self.assertRaises(StorageLimit):self.store.save(report())
+            self.store.save(value,attempt_id=attempt)
+        self.assertEqual(self.store.list_attempts()[0]['state'],'COMPLETED')
+
+    def test_review_cannot_consume_reserved_completion_rows(self):
+        saved=report();record=self.store.save(saved)
+        value=report();value['configuration']=self.config
+        with patch('rehearsal.storage.MAX_LEDGER_ROWS',4):
+            attempt=self.store.begin_attempt(self.config)
+            with self.assertRaises(StorageLimit):self.store.review(saved['run_id'],dict(expected_revision=0,report_sha256=record['sha256'],status='REVIEWED',note='synthetic'))
+            self.store.save(value,attempt_id=attempt)
+        self.assertEqual(self.store.get(saved['run_id'])['record']['revision'],0)
+
+    def test_concurrent_row_reservation_has_one_winner(self):
+        from concurrent.futures import ThreadPoolExecutor
+        def start(_):
+            try:return EvidenceStore(self.store.workspace).begin_attempt(self.config)
+            except StorageLimit:return None
+        with patch('rehearsal.storage.MAX_LEDGER_ROWS',3):
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                attempts=list(pool.map(start,range(8)))
+            self.assertEqual(sum(x is not None for x in attempts),1)
+            value=report();value['configuration']=self.config
+            self.store.save(value,attempt_id=next(x for x in attempts if x is not None))
+        self.assertEqual(len(self.store.list_runs()),1)
+
+    def test_failed_attempt_releases_unused_report_row(self):
+        with patch('rehearsal.storage.MAX_LEDGER_ROWS',3):
+            attempt=self.store.begin_attempt(self.config)
+            self.store.fail_attempt(attempt)
+            self.store.save(report())
+        self.assertEqual(self.store.list_attempts()[0]['state'],'FAILED')
+        self.assertEqual(len(self.store.list_runs()),1)
+
+    def test_probe_reserves_one_finish_and_replay_works_at_limit(self):
+        from unittest.mock import Mock
+        from rehearsal.probe_journal import execute_probe
+        runner=Mock(return_value={'synthetic_only':True,'scope':'disposable-loopback-probe','status':'CANCELLED','dispatch':'NOT_STARTED','remote_effects':'UNKNOWN','local_cleanup_verified':True,'response':None,'events':['PREPARED','CANCELLED_BEFORE_START']})
+        with patch('rehearsal.storage.MAX_LEDGER_ROWS',1):
+            with self.assertRaises(StorageLimit):execute_probe(self.store,12345,request_key='probe',runner=runner)
+        runner.assert_not_called()
+        with patch('rehearsal.storage.MAX_LEDGER_ROWS',2):
+            first=execute_probe(self.store,12345,request_key='probe',runner=runner)
+            again=execute_probe(EvidenceStore(self.store.workspace),12345,request_key='probe',runner=runner)
+            self.assertEqual(first,again)
+        self.assertEqual(runner.call_count,1)
+
+    def test_mixed_reservations_survive_reopen_and_finish(self):
+        outcome={'synthetic_only':True,'scope':'disposable-loopback-probe','status':'CANCELLED','dispatch':'NOT_STARTED','remote_effects':'UNKNOWN','local_cleanup_verified':True,'response':None,'events':['PREPARED','CANCELLED_BEFORE_START']}
+        with patch('rehearsal.storage.MAX_LEDGER_ROWS',5):
+            attempt=self.store.begin_attempt(self.config)
+            probe,claimed=self.store.claim_probe({'kind':'disposable-loopback-probe','port':12345,'timeout':5},'probe')
+            self.assertTrue(claimed)
+            restarted=EvidenceStore(self.store.workspace)
+            with self.assertRaises(StorageLimit):restarted.save(report())
+            restarted.record_probe(probe['attempt_id'],outcome)
+            value=report();value['configuration']=self.config
+            restarted.save(value,attempt_id=attempt)
+        self.assertEqual({x['state'] for x in self.store.list_attempts()},{'RECORDED','COMPLETED'})

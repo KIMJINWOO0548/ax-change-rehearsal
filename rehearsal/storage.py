@@ -230,6 +230,17 @@ class EvidenceStore:
         finally:
             if connection is not None: connection.close()
 
+    def _require_journal_capacity(self, connection, additional_rows, *, finishing_attempt=None):
+        # Reserve completion rows under the same SQLite write transaction as
+        # every claimant/writer. No persistent schema or old history is changed.
+        _, attempts = self._verify(connection, with_attempts=True)
+        reserved = sum(1 if item['type'] == 'probe_started' else 2
+                       for key, item in attempts.items()
+                       if item['state'] == 'INCOMPLETE' and key != finishing_attempt)
+        count = connection.execute('SELECT count FROM metadata WHERE id=1').fetchone()[0]
+        if count + reserved + additional_rows > MAX_LEDGER_ROWS:
+            raise StorageLimit('Evidence rows full or reserved for unfinished executions')
+
     def _append(self, connection, payload):
         head, count = connection.execute('SELECT head,count FROM metadata WHERE id=1').fetchone()
         if count >= MAX_LEDGER_ROWS: raise StorageLimit('Evidence limit reached')
@@ -247,6 +258,7 @@ class EvidenceStore:
             if report['run_id'] in runs: raise StorageConflict('Duplicate run')
             if attempt_id is not None:
                 self._require_pending(connection, attempt_id)
+            self._require_journal_capacity(connection, 2 if attempt_id is not None else 1, finishing_attempt=attempt_id)
             self._append(connection, {'type': 'run', 'report': report})
             if attempt_id is not None:
                 self._finish(connection, attempt_id, 'COMPLETED', report['run_id'])
@@ -290,6 +302,7 @@ class EvidenceStore:
             reserved = sum(item['state'] == 'INCOMPLETE' for item in attempts.values())
             if len(runs) + reserved >= self.limit: raise StorageLimit('Storage full or reserved')
             if len(attempts) >= MAX_ATTEMPTS: raise StorageLimit('Execution journal full')
+            self._require_journal_capacity(connection, 2 if probe else 3)
             payload = {'type': 'probe_started' if probe else 'attempt_started', 'attempt_id': attempt_id,
                          'configuration': configuration,
                          'created_at': dt.datetime.now(dt.timezone.utc).isoformat()}
@@ -303,6 +316,7 @@ class EvidenceStore:
         validate_outcome(outcome, attempt_id)
         def action(connection, runs):
             self._require_pending(connection, attempt_id)
+            self._require_journal_capacity(connection, 1, finishing_attempt=attempt_id)
             self._append(connection, {'type': 'probe_finished', 'attempt_id': attempt_id,
                          'outcome': outcome, 'created_at': dt.datetime.now(dt.timezone.utc).isoformat()})
             self._verify(connection)
@@ -315,6 +329,7 @@ class EvidenceStore:
 
     def _finish(self, connection, attempt_id, state, run_id=None):
         self._require_pending(connection, attempt_id)
+        self._require_journal_capacity(connection, 1, finishing_attempt=attempt_id)
         self._append(connection, {'type': 'attempt_finished', 'attempt_id': attempt_id,
                      'state': state, 'run_id': run_id,
                      'created_at': dt.datetime.now(dt.timezone.utc).isoformat()})
@@ -358,6 +373,7 @@ class EvidenceStore:
             if record['revision'] >= 1000: raise StorageLimit('Review limit reached')
             event = {'revision': record['revision'] + 1, 'status': data['status'], 'note': data['note'],
                      'report_sha256': record['sha256'], 'created_at': dt.datetime.now(dt.timezone.utc).isoformat()}
+            self._require_journal_capacity(connection, 1)
             self._append(connection, {'type': 'review', 'run_id': run_id, 'event': event})
             return self._verify(connection)[run_id]
         return self._operate(action)

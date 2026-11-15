@@ -245,6 +245,19 @@ class PersistentServerTests(unittest.TestCase):
             self.assertNotIn(b'private', body); self.assertNotIn(b'Traceback', body)
 
 
+    def test_idempotent_http_retry_and_conflict(self):
+        key={'Idempotency-Key':'http-retry'}
+        first=self.post(**key)
+        second=self.post(**key)
+        self.assertEqual(first[0],200); self.assertEqual(second[0],200)
+        self.assertEqual(json.loads(first[2]),json.loads(second[2]))
+        status,_,body=self.post(json.dumps({'faq_version':'stale','api_version':'corrected'}),**key)
+        self.assertEqual(status,409)
+        self.assertEqual(json.loads(body)['error']['code'],'EXECUTION_CONFLICT')
+        self.assertEqual(len(self.server.store.list_attempts()),1)
+        self.assertEqual(self.post(**{'Idempotency-Key':'bad key'})[0],400)
+
+
 class EphemeralHistoryTests(unittest.TestCase):
     setUpClass = classmethod(ServerTests.setUpClass.__func__)
     tearDownClass = classmethod(ServerTests.tearDownClass.__func__)
@@ -258,3 +271,6 @@ class EphemeralHistoryTests(unittest.TestCase):
         self.assertEqual(self.request(path='/api/runs')[0], 503)
         self.assertEqual(self.request('POST', '/api/runs/' + 'a'*32 + '/review', '{}',
                                      {'Content-Type': 'application/json', 'X-CSRF-Token': self.token()})[0], 503)
+
+    def test_key_requires_durable_workspace(self):
+        self.assertEqual(self.post(**{'Idempotency-Key':'retry'})[0],409)

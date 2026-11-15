@@ -271,6 +271,7 @@
     const expectedReadiness=actual.FAIL?'BLOCKED':actual.INCONCLUSIVE?'REVIEW_REQUIRED':!result.scope.complete?'PARTIAL_SCOPE':'PASS_WITHIN_REGISTERED_SCOPE';
     if(result.readiness!==expectedReadiness)throw new Error('준비 상태와 사례별 판정·실행 범위가 일치하지 않습니다.');
   }
+  let pendingExecution = null;
   async function run(event) {
     event.preventDefault();
     if(state.busy||!state.context||state.context.policy_review_valid===false)return;
@@ -278,9 +279,15 @@
     state.busy=true;state.error=false;const token=++state.request,revision=state.revision;availability();
     status('선택한 시나리오의 응답과 저장 상태를 확인하고 있습니다.');if(state.result)state.stale=true;
     try {
-      const result=await request('/api/run',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':state.context.csrf_token},body:JSON.stringify(config)});
+      const body=JSON.stringify(config);
+      const headers={'Content-Type':'application/json','X-CSRF-Token':state.context.csrf_token};
+      if(state.context.storage?.enabled===true){
+        if(!pendingExecution||pendingExecution.body!==body)pendingExecution={body,key:crypto.randomUUID()};
+        headers['Idempotency-Key']=pendingExecution.key;
+      }
+      const result=await request('/api/run',{method:'POST',headers,body});
       if(token!==state.request||revision!==state.revision) {status('설정이 변경되어 진행 중인 응답을 사용하지 않았습니다. 다시 실행하세요.','warning');return;}
-      validateResult(result,config);state.result=result;state.stale=false;
+      validateResult(result,config);pendingExecution=null;state.result=result;state.stale=false;
       archive?.afterRun(result);
       state.history=[result,...state.history.filter(r=>r.run_id!==result.run_id)].slice(0,8);renderResult();
     } catch(error) {

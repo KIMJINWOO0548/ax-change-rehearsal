@@ -14,20 +14,20 @@ class Node {
  click(){return this.handlers.click?.({preventDefault(){}});}
 }
 const descendants=node=>node.children.flatMap(n=>[n,...descendants(n)]);
-function setup({invalidPolicy=false}={}){
+function setup({invalidPolicy=false,persistent=false}={}){
  const ids={},html=fs.readFileSync('web/index.html','utf8');
  for(const m of html.matchAll(/<([a-z][a-z0-9]*)\b[^>]*id="([^"]+)"/g))ids[m[2]]=new Node(m[1]);
  const radios=['faq_version','api_version'].flatMap(name=>['stale','corrected'].map(value=>Object.assign(new Node('input'),{name,value,checked:value==='stale'})));
  const links=Array.from({length:4},()=>new Node('a'));
  const policy={path:'policy.md',sha256:'hash',lines:[{number:7,text:'return rule'}]};
  const cases=[{id:'S01',label:'Case <script>',intended_behavior:'CHANGE',tags:['boundary']},{id:'S02',label:'Missing input',intended_behavior:'INDETERMINATE',tags:['missing']}];
- const context={csrf_token:'test-token',policy_review_valid:!invalidPolicy,policy:{before:policy,after:policy},defaults:{faq_version:'stale',api_version:'stale'},project:{scenario_count:2},cases,change:{old_window_days:14,new_window_days:30,effective_date:'2026-12-01',preserved:[]},limits:[]};
+ const context={storage:{enabled:persistent},csrf_token:'test-token',policy_review_valid:!invalidPolicy,policy:{before:policy,after:policy},defaults:{faq_version:'stale',api_version:'stale'},project:{scenario_count:2},cases,change:{old_window_days:14,new_window_days:30,effective_date:'2026-12-01',preserved:[]},limits:[]};
  const calls=[];let next=null,counter=0;
  const document={getElementById:id=>ids[id],createElement:tag=>new Node(tag),body:new Node('body'),
   querySelectorAll(selector){if(selector.includes('.rail'))return links;if(selector==='#case-rows button')return descendants(ids['case-rows']).filter(n=>n.tag==='button');if(selector.includes('input'))return radios.filter(r=>selector.includes(r.name));return[];},
   querySelector(selector){if(selector.includes('.rail'))return links[0];return radios.find(r=>r.checked&&selector.includes(r.name));}};
  const fetch=async(path,options)=>{calls.push({path,options});return path==='/api/context'?{ok:true,json:async()=>context}:next();};
- const sandbox={document,fetch,console,AbortController,setTimeout,clearTimeout,Blob,URL,Set,Map,Option:class extends Node{constructor(text,value){super('option');this.textContent=text;this.value=value;}}};
+ const sandbox={crypto:require('node:crypto').webcrypto,document,fetch,console,AbortController,setTimeout,clearTimeout,Blob,URL,Set,Map,Option:class extends Node{constructor(text,value){super('option');this.textContent=text;this.value=value;}}};
  vm.createContext(sandbox);vm.runInContext(fs.readFileSync('web/review.js','utf8'),sandbox);vm.runInContext(source,sandbox);
  const settle=()=>new Promise(resolve=>setImmediate(resolve));
  const result=()=>{
@@ -125,4 +125,15 @@ test('overview does not turn unknown or partial scope into approval',async()=>{
  s.ids['review-priority'].click();assert.equal(s.ids['verdict-filter'].value,'INCONCLUSIVE');
  s.ids['select-boundary'].click();s.setNext(async()=>({ok:true,json:async()=>{const r=s.result();r.cases[0].business_verdict='PASS_WITHIN_SCOPE';r.counts={PASS_WITHIN_SCOPE:1};r.readiness='PARTIAL_SCOPE';return r;}}));
  await s.run();assert.equal(s.ids['workspace-title'].textContent,'선택 범위만 검증됨');assert.equal(s.ids['review-priority'].hidden,true);
+});
+
+test('persistent failed request reuses key; completed and changed requests get new keys',async()=>{
+ const s=setup({persistent:true});await s.settle();
+ const keys=()=>s.calls.filter(c=>c.path==='/api/run').map(c=>c.options.headers['Idempotency-Key']);
+ s.setNext(async()=>{throw new Error('response lost');});await s.run();await s.run();
+ assert.equal(keys().length,2);assert.equal(keys()[0],keys()[1]);
+ s.setNext(async()=>s.good());await s.run();assert.equal(keys()[2],keys()[0]);
+ await s.run();assert.notEqual(keys()[3],keys()[0]);
+ s.setNext(async()=>{throw new Error('lost');});await s.run();
+ s.change('faq_version','corrected');await s.run();assert.notEqual(keys()[4],keys()[5]);
 });

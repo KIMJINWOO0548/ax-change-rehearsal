@@ -10,7 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from .app import build_context, execute_run
 from .engine import ROOT
 from .validation import _reject_constant, _unique_pairs
-from .storage import EvidenceStore, StorageError, StorageConflict, StorageLimit, RunNotFound, storage_info
+from .storage import EvidenceStore, StorageError, StorageConflict, ExecutionConflict, StorageLimit, RunNotFound, storage_info
 
 
 ASSETS = {'/': ('index.html', 'text/html; charset=utf-8'),
@@ -23,9 +23,19 @@ MAX_BODY = 2048
 CSP = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 
 
-def execute_persisted(store, configuration, runner):
+def execute_persisted(store, configuration, runner, *, request_key=None):
     """Commit the start before execution; never replay unfinished attempts."""
-    attempt_id = store.begin_attempt(configuration)
+    if request_key is None:
+        attempt_id = store.begin_attempt(configuration)
+    else:
+        attempt, claimed = store.claim_attempt(configuration, request_key)
+        attempt_id = attempt['attempt_id']
+        if not claimed:
+            if attempt['state'] != 'COMPLETED':
+                raise ExecutionConflict('Execution already recorded; automatic replay prohibited')
+            saved = store.get(attempt['run_id'])
+            return {**saved['report'], 'record': saved['record']}
+
     try:
         result = runner(configuration)
     except Exception:
@@ -140,6 +150,8 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
     def _storage_error(self, exc):
         if isinstance(exc, RunNotFound):
             self._error(404, 'RUN_NOT_FOUND', '저장된 실행을 찾지 못했습니다.')
+        elif isinstance(exc, ExecutionConflict):
+            self._error(409, 'EXECUTION_CONFLICT', 'This request is already recorded or has a different configuration. Inspect /api/executions; do not automatically retry with a new key.')
         elif isinstance(exc, StorageConflict):
             self._error(409, 'REVIEW_CONFLICT', '기록이 변경되었거나 해시가 일치하지 않습니다. 다시 불러오세요.')
         elif isinstance(exc, StorageLimit):
@@ -185,7 +197,12 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                     return
                 result = self.server.store.review(review_id, config)
             else:
-                result = (execute_persisted(self.server.store, config, execute_run)
+                keys = self.headers.get_all('Idempotency-Key', [])
+                if len(keys) > 1: raise ValueError('Duplicate idempotency header')
+                if keys and self.server.store is None:
+                    self._error(409, 'IDEMPOTENCY_REQUIRES_STORAGE', 'Persistent workspace required')
+                    return
+                result = (execute_persisted(self.server.store, config, execute_run, request_key=keys[0] if keys else None)
                           if self.server.store is not None else execute_run(config))
         except StorageError as exc:
             self._storage_error(exc)

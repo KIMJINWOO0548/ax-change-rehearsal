@@ -48,6 +48,7 @@ def validate_report(report):
 
 class StorageError(Exception): pass
 class StorageConflict(StorageError): pass
+class ExecutionConflict(StorageConflict): pass
 class StorageLimit(StorageError): pass
 class RunNotFound(StorageError): pass
 
@@ -149,12 +150,19 @@ class EvidenceStore:
                 entry['record'].update(revision=event['revision'], review_status=event['status'])
                 entry['events'].append({**event, 'event_sha256': digest, 'previous_sha256': prev})
             elif payload.get('type') == 'attempt_started':
-                if (set(payload) != {'type', 'attempt_id', 'configuration', 'created_at'}
+                if (set(payload) not in ({'type', 'attempt_id', 'configuration', 'created_at'},
+                                             {'type', 'attempt_id', 'configuration', 'created_at', 'request_sha256'})
                         or type(payload['attempt_id']) is not str
                         or uuid.UUID(payload['attempt_id']).hex != payload['attempt_id']
                         or payload['attempt_id'] in attempts or len(attempts) >= MAX_ATTEMPTS
                         or type(payload['created_at']) is not str or len(payload['created_at']) > 64):
                     raise StorageError('Invalid execution start')
+                if 'request_sha256' in payload:
+                    digest_key = payload['request_sha256']
+                    if (type(digest_key) is not str or len(digest_key) != 64
+                            or any(c not in '0123456789abcdef' for c in digest_key)
+                            or any(a.get('request_sha256') == digest_key for a in attempts.values())):
+                        raise StorageError('Invalid request binding')
                 from .app import _validate_configuration
                 _validate_configuration(payload['configuration'])
                 attempts[payload['attempt_id']] = {**payload, 'state': 'INCOMPLETE'}
@@ -224,20 +232,38 @@ class EvidenceStore:
         return self._operate(action)
 
     def begin_attempt(self, configuration):
+        return self._claim_attempt(configuration, None)[0]['attempt_id']
+
+    def claim_attempt(self, configuration, request_key):
+        if (type(request_key) is not str or not 1 <= len(request_key) <= 128
+                or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_' for c in request_key)):
+            raise ValueError('Invalid idempotency key')
+        return self._claim_attempt(configuration, sha(request_key))
+
+    def _claim_attempt(self, configuration, request_sha256):
         from .app import _validate_configuration
         _validate_configuration(configuration)
         # Canonical roundtrip prevents a caller mutating the recorded config.
         configuration = json.loads(canonical(configuration))
+        if 'case_ids' in configuration: configuration['case_ids'] = sorted(configuration['case_ids'])
         attempt_id = uuid.uuid4().hex
         def action(connection, runs):
             _, attempts = self._verify(connection, with_attempts=True)
+            if request_sha256 is not None:
+                for prior in attempts.values():
+                    if prior.get('request_sha256') == request_sha256:
+                        if canonical(prior['configuration']) != canonical(configuration):
+                            raise ExecutionConflict('Idempotency key configuration mismatch')
+                        return prior, False
             reserved = sum(item['state'] == 'INCOMPLETE' for item in attempts.values())
             if len(runs) + reserved >= self.limit: raise StorageLimit('Storage full or reserved')
             if len(attempts) >= MAX_ATTEMPTS: raise StorageLimit('Execution journal full')
-            self._append(connection, {'type': 'attempt_started', 'attempt_id': attempt_id,
+            payload = {'type': 'attempt_started', 'attempt_id': attempt_id,
                          'configuration': configuration,
-                         'created_at': dt.datetime.now(dt.timezone.utc).isoformat()})
-            return attempt_id
+                         'created_at': dt.datetime.now(dt.timezone.utc).isoformat()}
+            if request_sha256 is not None: payload['request_sha256'] = request_sha256
+            self._append(connection, payload)
+            return {**payload, 'state': 'INCOMPLETE'}, True
         return self._operate(action)
 
     def _require_pending(self, connection, attempt_id):

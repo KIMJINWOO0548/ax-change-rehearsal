@@ -108,3 +108,13 @@ Windows permissions. That is not a single independent full-suite pass. The full
 253-test successful run above was the implementer's normally authorized run.
 Previously over-reserved legacy pending history remains readable but is not
 retroactively repaired; new admission protection does not create missing space.
+
+## Replay identity validation
+
+Offline replay validates the required report envelope before starting a new
+synthetic run. Original run ID and timezone-aware ISO creation time must remain
+valid even though their values are excluded from deterministic comparison. A
+missing ID or malformed timestamp is invalid evidence, not MATCH. Attached
+`record` review metadata remains outside deterministic evidence and never grants
+deployment approval. This adds no remote execution, migration, or rewrite of
+existing history; storage integrity must still be checked separately.

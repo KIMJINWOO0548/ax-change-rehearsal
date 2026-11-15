@@ -4,10 +4,12 @@ Saved data is never interpreted as code, URLs, file names, or adapter selectors.
 A replay does not retry any external operation or change a review decision.
 """
 import copy
+import datetime as dt
 import re
 
 from .adapters import canonical, digest
 from .app import _validate_configuration, execute_run
+from .storage import REPORT_ALLOWED, validate_report
 
 
 HASH = re.compile(r'[0-9a-f]{64}')
@@ -29,6 +31,14 @@ The caller must separately verify the saved record's storage integrity.
 """
     if type(report) is not dict or report.get('synthetic_only') is not True:
         raise ValueError('Only registered synthetic reports can be replayed.')
+    # Identity/time are excluded from deterministic comparison, not optional.
+    # Attached review metadata is outside the report and conveys no approval.
+    try:
+        validate_report({key: value for key, value in report.items() if key in REPORT_ALLOWED})
+        if dt.datetime.fromisoformat(report['created_at']).tzinfo is None:
+            raise ValueError('Missing timestamp timezone')
+    except (ValueError, TypeError, RecursionError):
+        raise ValueError('Replay evidence is missing or inconsistent.') from None
     configuration = report.get('configuration')
     _validate_configuration(configuration)
     manifest = report.get('manifest')

@@ -21,6 +21,30 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(result['counts']['INCONCLUSIVE'], 3)
         self.assertFalse(result['deployment_approval'])
 
+    def test_missing_or_invalid_report_identity_blocks_replay_before_execution(self):
+        variants = []
+        for field in ('run_id', 'created_at', 'readiness', 'counts'):
+            changed = copy.deepcopy(self.report)
+            changed.pop(field)
+            variants.append(changed)
+        for field, value in (('run_id', 'not-a-run'), ('run_id', True),
+                             ('created_at', None), ('created_at', 'yesterday'),
+                             ('created_at', '2026-11-16T03:00:00'), ('counts', [])):
+            changed = copy.deepcopy(self.report)
+            changed[field] = value
+            variants.append(changed)
+        for report in variants:
+            with self.subTest(report=report.get('run_id')), patch('rehearsal.replay.execute_run') as run:
+                with self.assertRaises(ValueError):
+                    replay_report(report)
+                run.assert_not_called()
+
+    def test_attached_storage_record_is_not_replayed_or_treated_as_approval(self):
+        self.report['record'] = {'review_status': 'REVIEWED'}
+        result = replay_report(self.report)
+        self.assertEqual(result['status'], 'MATCH')
+        self.assertFalse(result['deployment_approval'])
+
     def test_partial_scope_is_preserved(self):
         report = execute_run({'faq_version': 'stale', 'api_version': 'corrected', 'case_ids': ['S04']})
         self.assertEqual(replay_report(report)['status'], 'MATCH')

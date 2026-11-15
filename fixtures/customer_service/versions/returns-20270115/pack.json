@@ -1,0 +1,282 @@
+{
+  "schema_version": "1.0",
+  "pack_id": "customer_service",
+  "title": "Synthetic return policy 2027-01-15 (14 to 21 days)",
+  "provenance": "authored_synthetic_example",
+  "expert_reviewed": false,
+  "effective_date": "2027-01-15",
+  "timezone": "Asia/Seoul",
+  "baseline_artifact": "baseline_v1",
+  "candidate_artifact": "candidate_v2",
+  "source_documents": {
+    "before": "versions/returns-20270115/policy_before.md",
+    "after": "versions/returns-20270115/policy_after.md"
+  },
+  "input_fields": {
+    "order_id": "string",
+    "region": "string",
+    "delivered_on": "date",
+    "elapsed_days": "nonnegative_integer",
+    "opened": "boolean",
+    "custom_made": "boolean"
+  },
+  "rules_authority": "source_documents_after_manual_review",
+  "cases": [
+    {
+      "id": "S01",
+      "label": "Synthetic boundary 1",
+      "business_input": {
+        "order_id": "synthetic_v3_order_1",
+        "region": "KR",
+        "delivered_on": "2027-01-14",
+        "elapsed_days": 15,
+        "opened": false,
+        "custom_made": false
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "INELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "INELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "intended_behavior": "PRESERVE",
+      "tags": [
+        "authored_synthetic"
+      ]
+    },
+    {
+      "id": "S02",
+      "label": "Synthetic boundary 2",
+      "business_input": {
+        "order_id": "synthetic_v3_order_2",
+        "region": "KR",
+        "delivered_on": "2027-01-15",
+        "elapsed_days": 14,
+        "opened": false,
+        "custom_made": false
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "ELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 1
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "ELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 1
+        }
+      },
+      "intended_behavior": "PRESERVE",
+      "tags": [
+        "authored_synthetic"
+      ]
+    },
+    {
+      "id": "S03",
+      "label": "Synthetic boundary 3",
+      "business_input": {
+        "order_id": "synthetic_v3_order_3",
+        "region": "KR",
+        "delivered_on": "2027-01-15",
+        "elapsed_days": 15,
+        "opened": false,
+        "custom_made": false
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "INELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "ELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 1
+        }
+      },
+      "intended_behavior": "CHANGE",
+      "tags": [
+        "authored_synthetic"
+      ]
+    },
+    {
+      "id": "S04",
+      "label": "Synthetic boundary 4",
+      "business_input": {
+        "order_id": "synthetic_v3_order_4",
+        "region": "KR",
+        "delivered_on": "2027-01-15",
+        "elapsed_days": 21,
+        "opened": false,
+        "custom_made": false
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "INELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "ELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 1
+        }
+      },
+      "intended_behavior": "CHANGE",
+      "tags": [
+        "authored_synthetic"
+      ]
+    },
+    {
+      "id": "S05",
+      "label": "Synthetic boundary 5",
+      "business_input": {
+        "order_id": "synthetic_v3_order_5",
+        "region": "KR",
+        "delivered_on": "2027-01-15",
+        "elapsed_days": 22,
+        "opened": false,
+        "custom_made": false
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "INELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "INELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "intended_behavior": "PRESERVE",
+      "tags": [
+        "authored_synthetic"
+      ]
+    },
+    {
+      "id": "S06",
+      "label": "Synthetic boundary 6",
+      "business_input": {
+        "order_id": "synthetic_v3_order_6",
+        "region": "KR",
+        "delivered_on": "2027-01-16",
+        "elapsed_days": 21,
+        "opened": false,
+        "custom_made": false
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "INELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "ELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 1
+        }
+      },
+      "intended_behavior": "CHANGE",
+      "tags": [
+        "authored_synthetic"
+      ]
+    },
+    {
+      "id": "S07",
+      "label": "Synthetic boundary 7",
+      "business_input": {
+        "order_id": "synthetic_v3_order_7",
+        "region": "KR",
+        "delivered_on": "2027-01-15",
+        "elapsed_days": 14,
+        "opened": true,
+        "custom_made": false
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "INELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "INELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "intended_behavior": "PRESERVE",
+      "tags": [
+        "authored_synthetic"
+      ]
+    },
+    {
+      "id": "S08",
+      "label": "Synthetic boundary 8",
+      "business_input": {
+        "order_id": "synthetic_v3_order_8",
+        "region": "KR",
+        "delivered_on": "2027-01-15",
+        "elapsed_days": 14,
+        "opened": false,
+        "custom_made": true
+      },
+      "expected_before": {
+        "status": "DECIDED",
+        "decision": "INELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "expected_after": {
+        "status": "DECIDED",
+        "decision": "INELIGIBLE",
+        "state_delta": {
+          "table": "return_requests",
+          "count": 0
+        }
+      },
+      "intended_behavior": "PRESERVE",
+      "tags": [
+        "authored_synthetic"
+      ]
+    }
+  ]
+}

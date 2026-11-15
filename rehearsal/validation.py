@@ -55,7 +55,7 @@ def _nonblank(value) -> bool:
     return type(value) is str and bool(value.strip())
 
 
-def validate_pack(pack: dict, root: Path) -> None:
+def validate_pack(pack: dict, root: Path, policy_version=None) -> None:
     require(type(pack) is dict and set(pack) == PACK_KEYS, 'Invalid pack fields')
     domain = pack['pack_id']
     require(type(domain) is str and domain in ADAPTERS, 'Unsupported domain')
@@ -69,9 +69,16 @@ def validate_pack(pack: dict, root: Path) -> None:
     date = pack['effective_date']
     require(type(date) is str and re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}', date), 'Invalid effective date')
     dt.date.fromisoformat(date)
-    # The current independent adapters implement only this policy date. A metadata
-    # edit must not falsely imply that their reviewed implementation also changed.
-    require(date == '2026-12-01', 'This mock adapter supports effective_date 2026-12-01 only')
+    # A date edit cannot select different rules. Explicit versions must match
+    # their pinned registered pack; legacy adapters retain their original date.
+    if policy_version is not None:
+        from .policies import get_policy
+        selected_policy = get_policy(policy_version)
+        selected_policy.verify_pack(pack)
+        supported_date = selected_policy.effective_date
+    else:
+        supported_date = '2026-12-01'
+    require(date == supported_date, 'Effective date does not match the selected mock policy')
     require(pack['input_fields'] == adapter.fields, 'Input contract does not match adapter')
     require(pack['rules_authority'] == 'source_documents_after_manual_review', 'Unsupported rules authority')
     sources = pack['source_documents']

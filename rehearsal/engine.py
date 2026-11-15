@@ -134,12 +134,20 @@ def run_side(adapter, artifact: str, variant: str, case: dict, expected: dict, k
     }
 
 
-def run_pack(pack: dict, variant: str = "normal") -> dict:
+def run_pack(pack: dict, variant: str = "normal", *, policy_version=None) -> dict:
     if variant not in VARIANTS:
         raise ValueError("Unsupported variant")
-    validate_pack(pack, ROOT)
+    if policy_version is not None: pack = copy.deepcopy(pack)
+    validate_pack(pack, ROOT, policy_version=policy_version)
     adapter = ADAPTERS[pack["pack_id"]]()
     manifest = manifest_for(pack, variant)
+    if policy_version is not None:
+        from .policies import get_policy
+        policy = get_policy(policy_version)
+        adapter = policy.adapter()
+        manifest.update(policy_version=policy_version, policy_artifacts=policy.fingerprints(),
+                        registry_source_sha256=hashlib.sha256((ROOT / 'rehearsal/policies.py').read_bytes()).hexdigest())
+        manifest['sha256'] = digest({k:v for k,v in manifest.items() if k != 'sha256'})
     cases = []
     for case in pack["cases"]:
         prefix = manifest["sha256"][:16] + ":" + case["id"]
@@ -155,6 +163,7 @@ def run_pack(pack: dict, variant: str = "normal") -> dict:
         assertions = "FAIL" if any(s["assertion_status"] == "FAIL" for s in sides) else ("INCOMPLETE" if any(s["assertion_status"] == "INCOMPLETE" for s in sides) else "PASS")
         cases.append({"id": case["id"], "label": case["label"], "input": case["business_input"], "intended_behavior": case["intended_behavior"], "baseline": before, "candidate": after, "business_verdict": verdict, "assertion_status": assertions})
     assert_sources_unchanged()
+    if policy_version is not None: policy.fingerprints()
     counts = Counter(c["business_verdict"] for c in cases)
     readiness = "BLOCKED" if counts["FAIL"] else ("REVIEW_REQUIRED" if counts["INCONCLUSIVE"] else "PASS_WITHIN_REGISTERED_SCOPE")
     return {"domain": pack["pack_id"], "title": pack["title"], "manifest": manifest, "variant": variant, "cases": cases, "readiness": readiness, "counts": dict(counts)}

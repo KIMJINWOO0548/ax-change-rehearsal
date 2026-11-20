@@ -7,8 +7,10 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),asse
  try {
   browser=await chromium.launch({...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{}),headless:true});
   const page=await browser.newPage({viewport:{width:1488,height:1058}}),errors=[];
+  const desktop=process.env.AX_DESKTOP_QA==='1';
   page.on('pageerror',e=>errors.push(e.message));
   await page.goto(process.env.WORKBENCH_URL||'http://127.0.0.1:8765');
+  if(desktop)await page.evaluate(()=>document.body.setAttribute('data-desktop',''));
   await page.locator('#run:enabled').waitFor();
   assert.match(await page.locator('#after-change').innerText(),/30/);
   assert.equal(await page.locator('input[name=case_id]:checked').count(),12);
@@ -31,8 +33,19 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),asse
     await page.waitForFunction(()=>document.querySelector('#run-status').textContent.startsWith('실행 완료'));
   }
   await run();assert.equal(await page.locator('#case-rows tr').count(),12);
+  if(desktop){
+    assert.equal(await page.locator('.rail nav [aria-current]').getAttribute('href'),'#results');
+    assert.equal(await page.locator('#results-title').evaluate(el=>el===document.activeElement),true);
+    await page.setViewportSize({width:1060,height:750});
+  }
   const detail=page.locator('#case-rows button[data-case-id="S04"]');
   await detail.press('Enter');assert.equal(await page.locator('#case-detail').isVisible(),true);
+  if(desktop){
+    const begin=await page.locator('.case-review .table-wrap').evaluate(el=>({width:el.clientWidth,scrollWidth:el.scrollWidth,left:el.scrollLeft}));
+    assert.deepEqual(begin,{width:begin.width,scrollWidth:begin.width,left:0});
+    assert.equal(await page.locator('.rail nav [aria-current]').getAttribute('href'),'#results');
+    await page.setViewportSize({width:1488,height:1058});
+  }
   assert.equal(await page.locator('.decision-cell.mismatch').count(),2);
   assert.match(await page.locator('#state-comparison').innerText(),/0건/);
   assert.equal(await page.locator('#detail-objects details[open]').count(),0);

@@ -113,7 +113,7 @@ main>.workspace-overview{display:grid;grid-template-columns:minmax(0,1.15fr) min
 
 p,h1,h2,h3,dt,dd,button,a,label,summary{word-break:keep-all}
 
-body[data-desktop] .rail{position:sticky;top:0;z-index:5;width:100%;padding:6px 14px;display:flex;align-items:center;gap:16px;min-height:44px}
+body[data-desktop] .rail{position:sticky;top:0;z-index:5;width:100%;padding:6px 14px;display:flex;flex-direction:row;justify-content:flex-start;align-items:center;gap:16px;min-height:44px}
 body[data-desktop] .brand{flex:0 0 auto;font-size:16px;line-height:1.2}
 body[data-desktop] .brand span,body[data-desktop] .brand br,body[data-desktop] .rail-foot,body[data-desktop] .rail nav span{display:none}
 body[data-desktop] .rail nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:0;min-width:0}
@@ -135,11 +135,19 @@ body[data-desktop] .skip{position:fixed;left:10px}
 body[data-desktop] .skip:focus{z-index:10}
 body[data-desktop] :focus-visible{outline:3px solid #0B665B;outline-offset:2px}
 body[data-desktop] .rail :focus-visible{outline-color:#9BE0CF}
+body[data-desktop] :is(#results-title,#run-status,#case-detail,#archive-detail){scroll-margin-top:72px}
 @media(min-width:1060px){
-  body[data-desktop] #result-content{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(335px,1fr);gap:0 16px;align-items:start}
-  body[data-desktop] #result-content>*{grid-column:1/-1;min-width:0}
-  body[data-desktop] #result-content>.table-wrap{grid-column:1;grid-row:8}
-  body[data-desktop] #result-content>#case-detail{grid-column:2;grid-row:8/11;margin-top:0;padding:10px 0 0 12px;border-left:1px solid var(--line)}
+  body[data-desktop] .case-review:has(>#case-detail:not([hidden])){display:grid;grid-template-columns:minmax(0,1.3fr) minmax(335px,1fr);gap:16px;align-items:start}
+  body[data-desktop] .case-review-list{min-width:0}
+  body[data-desktop] #case-detail{margin-top:0;padding:10px 0 0 12px;border-left:1px solid var(--line)}
+  body[data-desktop] .case-review table{table-layout:fixed;min-width:0}
+  body[data-desktop] .case-review th:first-child{width:27%}
+  body[data-desktop] .case-review th:nth-child(2),body[data-desktop] .case-review th:nth-child(3){width:11%}
+  body[data-desktop] .case-review th:nth-child(4){width:19%}
+  body[data-desktop] .case-review :is(td,th){padding:8px 6px;overflow-wrap:anywhere}
+  body[data-desktop] .case-review :is(.badge,.muted){white-space:normal}
+  body[data-desktop] #case-rows button{min-width:0;padding-inline:6px}
+  body[data-desktop] #table-scroll-help{display:none}
 }
 @media(max-width:740px){
   body[data-desktop] .rail{gap:8px;padding:6px 8px}

@@ -79,8 +79,8 @@
     </form>
   </section>
   <section id="results" aria-labelledby="results-title">
-    <div class="section-heading"><h2 id="results-title"><span>04</span> 차이·근거 검토</h2><button id="download" class="secondary" disabled>실행 JSON 다운로드</button></div>
-    <p id="run-status" class="notice" role="status" aria-live="polite">아직 리허설이 실행되지 않았습니다. 사례와 버전을 선택한 뒤 실행하세요.</p>
+    <div class="section-heading"><h2 id="results-title" tabindex="-1"><span>04</span> 차이·근거 검토</h2><button id="download" class="secondary" disabled>실행 JSON 다운로드</button></div>
+    <p id="run-status" class="notice" role="status" aria-live="polite" tabindex="-1">아직 리허설이 실행되지 않았습니다. 사례와 버전을 선택한 뒤 실행하세요.</p>
     <div id="result-content" hidden>
       <div id="summary" class="summary"></div>
       <div class="review-next"><p id="review-next-text"></p><button id="review-priority" class="secondary" type="button">우선 검토 사례 열기</button></div>
@@ -98,20 +98,24 @@
         </select>
         <span id="visible-count"></span><button id="select-failed" type="button" class="secondary" disabled>실패 사례만 선택</button>
       </div>
-      <p id="table-scroll-help" class="section-note">표를 좌우로 스크롤해 FAQ·API 검사를 비교하세요. 키보드로는 표에 초점을 두고 방향키를 사용하세요.</p>
-      <div class="table-wrap" tabindex="0" role="region" aria-label="시나리오 결과 표" aria-describedby="table-scroll-help">
-        <table><caption class="sr-only">시나리오별 FAQ·API 검증과 업무 판정</caption><thead><tr>
-          <th scope="col">시나리오</th><th scope="col">FAQ</th><th scope="col">API</th><th scope="col">업무 판정</th><th scope="col">이전 대비</th><th scope="col">근거</th>
-        </tr></thead><tbody id="case-rows"></tbody></table>
+      <p id="table-scroll-help" class="section-note">좁은 화면에서는 표를 좌우로 스크롤하세요. 키보드로는 표에 초점을 두고 방향키를 사용하세요.</p>
+      <div class="case-review">
+        <div class="case-review-list">
+          <div class="table-wrap" tabindex="0" role="region" aria-label="시나리오 결과 표" aria-describedby="table-scroll-help">
+            <table><caption class="sr-only">시나리오별 FAQ·API 검증과 업무 판정</caption><thead><tr>
+              <th scope="col">시나리오</th><th scope="col">FAQ</th><th scope="col">API</th><th scope="col">업무 판정</th><th scope="col">이전 대비</th><th scope="col">근거</th>
+            </tr></thead><tbody id="case-rows"></tbody></table>
+          </div>
+          <p id="no-results" hidden>이 조건에 해당하는 시나리오가 없습니다.</p>
+        </div>
+        <section id="case-detail" class="inspector" hidden aria-labelledby="detail-title" tabindex="-1">
+          <div class="section-heading"><h3 id="detail-title"></h3><button id="close-detail" class="secondary">상세 닫기</button></div>
+          <p id="detail-reason"></p><dl id="detail-facts"></dl>
+          <div id="decision-comparison" class="decision-comparison"></div>
+          <div id="state-comparison" class="state-comparison"></div>
+          <div id="detail-evidence"></div><div id="detail-objects"></div>
+        </section>
       </div>
-      <p id="no-results" hidden>이 조건에 해당하는 시나리오가 없습니다.</p>
-      <section id="case-detail" class="inspector" hidden aria-labelledby="detail-title" tabindex="-1">
-        <div class="section-heading"><h3 id="detail-title"></h3><button id="close-detail" class="secondary">상세 닫기</button></div>
-        <p id="detail-reason"></p><dl id="detail-facts"></dl>
-        <div id="decision-comparison" class="decision-comparison"></div>
-        <div id="state-comparison" class="state-comparison"></div>
-        <div id="detail-evidence"></div><div id="detail-objects"></div>
-      </section>
       <p class="section-note">위 비교 이력은 이 탭의 최근 8개입니다. 새로고침하면 사라집니다. 별도 로컬 저장 여부는 아래에서 확인하세요.</p>
     </div>
   </section>

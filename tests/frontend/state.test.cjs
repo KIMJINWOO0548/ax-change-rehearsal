@@ -9,7 +9,7 @@ class Node {
  constructor(tag='div'){this.tag=tag;this.children=[];this.handlers={};this.attrs={};this.textContent='';this.value='';this.hidden=false;this.disabled=false;}
  append(...nodes){this.children.push(...nodes);}
  replaceChildren(...nodes){this.children=[...nodes];if(this.tag==='select')this.value=nodes[0]?.value||'';}
- setAttribute(k,v){this.attrs[k]=v;} getAttribute(k){return this.attrs[k];} removeAttribute(k){delete this.attrs[k];}
+ setAttribute(k,v){this.attrs[k]=v;} getAttribute(k){return this.attrs[k];} hasAttribute(k){return Object.hasOwn(this.attrs,k);} removeAttribute(k){delete this.attrs[k];}
  addEventListener(k,fn){this.handlers[k]=fn;} focus(){this.focused=true;} remove(){}
  click(){return this.handlers.click?.({preventDefault(){}});}
 }
@@ -19,7 +19,7 @@ function setup({invalidPolicy=false,persistent=false,session=memoryStorage(),sco
  const ids={},html=fs.readFileSync('web/index.html','utf8');
  for(const m of html.matchAll(/<([a-z][a-z0-9]*)\b[^>]*id="([^"]+)"/g))ids[m[2]]=new Node(m[1]);
  const radios=['faq_version','api_version'].flatMap(name=>['stale','corrected'].map(value=>Object.assign(new Node('input'),{name,value,checked:value==='stale'})));
- const links=Array.from({length:4},()=>new Node('a'));
+ const links=['policy','scenarios','configuration','results','archive'].map(id=>{const link=new Node('a');link.setAttribute('href','#'+id);return link;});
  const policy={path:'policy.md',sha256:'hash',lines:[{number:7,text:'return rule'}]};
  const cases=[{id:'S01',label:'Case <script>',intended_behavior:'CHANGE',tags:['boundary']},{id:'S02',label:'Missing input',intended_behavior:'INDETERMINATE',tags:['missing']}];
  const context={storage:{enabled:persistent,request_scope:scope},csrf_token:'test-token',policy_review_valid:!invalidPolicy,policy:{before:policy,after:policy},defaults:{faq_version:'stale',api_version:'stale'},project:{scenario_count:2},cases,change:{old_window_days:14,new_window_days:30,effective_date:'2026-12-01',preserved:[]},limits:[]};
@@ -28,7 +28,7 @@ function setup({invalidPolicy=false,persistent=false,session=memoryStorage(),sco
   querySelectorAll(selector){if(selector.includes('.rail'))return links;if(selector==='#case-rows button')return descendants(ids['case-rows']).filter(n=>n.tag==='button');if(selector.includes('input'))return radios.filter(r=>selector.includes(r.name));return[];},
   querySelector(selector){if(selector.includes('.rail'))return links[0];return radios.find(r=>r.checked&&selector.includes(r.name));}};
  const fetch=async(path,options)=>{calls.push({path,options});return path.startsWith('/api/context')?{ok:true,json:async()=>context}:next();};
- const sandbox={sessionStorage:session,crypto:require('node:crypto').webcrypto,document,fetch,console,AbortController,setTimeout,clearTimeout,Blob,URL,Set,Map,Option:class extends Node{constructor(text,value){super('option');this.textContent=text;this.value=value;}}};
+ const sandbox={sessionStorage:session,crypto:require('node:crypto').webcrypto,document,fetch,console,AbortController,setTimeout,clearTimeout,Blob,URL,Set,Map,location:{hash:''},Option:class extends Node{constructor(text,value){super('option');this.textContent=text;this.value=value;}}};
  vm.createContext(sandbox);vm.runInContext(fs.readFileSync('web/review.js','utf8'),sandbox);vm.runInContext(source,sandbox);
  const settle=()=>new Promise(resolve=>setImmediate(resolve));
  const result=()=>{

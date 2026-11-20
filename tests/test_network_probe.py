@@ -201,3 +201,38 @@ class CleanupRecoveryTests(unittest.TestCase):
   self.assertEqual(result['terminal_observed'],'RESPONSE_AFTER_BUDGET')
   self.assertIsNone(result['response'])
   validate_outcome(result,'a'*32)
+
+
+class DeadlineStageTests(unittest.TestCase):
+ """Deterministic parent-loop checks, not evidence of real socket dispatch."""
+ def exercise_expired_budget(self, stages):
+  from collections import deque
+  from unittest.mock import Mock, patch
+  messages=deque(('stage', value) for value in stages)
+  receiver=Mock();receiver.poll.side_effect=lambda timeout: bool(messages)
+  receiver.recv.side_effect=messages.popleft
+  worker=Mock();worker.is_alive.return_value=False
+  context=Mock();context.Pipe.return_value=(receiver,Mock());context.Process.return_value=worker
+  # The same total deadline applies even if process startup consumed the budget.
+  with patch('rehearsal.network_probe.multiprocessing.get_context',return_value=context),patch('rehearsal.network_probe.time.monotonic',side_effect=[0,3,3]):
+   result=probe(12345,timeout=2)
+  self.assertEqual(result['status'],'TIMED_OUT')
+  self.assertTrue(result['local_cleanup_verified'])
+  self.assertEqual(result['remote_effects'],'UNKNOWN')
+  self.assertIsNone(result['response'])
+  worker.start.assert_called_once();worker.close.assert_called_once()
+  from rehearsal.probe_journal import validate_outcome
+  validate_outcome(result,'a'*32)
+  return result
+ def test_startup_deadline_does_not_invent_dispatch(self):
+  result=self.exercise_expired_budget([])
+  self.assertEqual(result['dispatch'],'UNKNOWN')
+  self.assertEqual(result['events'],['PREPARED','WORKER_STARTED','TIMED_OUT'])
+ def test_connecting_deadline_does_not_invent_dispatch(self):
+  result=self.exercise_expired_budget(['CONNECTING'])
+  self.assertEqual(result['dispatch'],'UNKNOWN')
+  self.assertNotIn('REQUEST_SENT',result['events'])
+ def test_sent_stage_is_preserved_at_deadline(self):
+  result=self.exercise_expired_budget(['CONNECTING','REQUEST_SENT'])
+  self.assertEqual(result['dispatch'],'SENT')
+  self.assertEqual(result['events'],['PREPARED','WORKER_STARTED','CONNECTING','REQUEST_SENT','TIMED_OUT'])

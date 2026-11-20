@@ -1,5 +1,45 @@
 # 데이터·실행·판정 계약 v1
 
+## Versioned synthetic notification observations
+
+Only the `returns-20270115` policy uses [notification evidence v1](mock-effects-v1.schema.json).
+Its adapter reads a hash-pinned mock behavior artifact independently of the
+hash-pinned role/count expectations used by the evaluator. No address, real
+recipient or connector is part of the data or runtime.
+
+Each side records initial, first-call and replay observations alongside the
+existing independent receipt observations. An observed empty list proves zero
+within that observation. A failed or unreached observation keeps rows and any
+unavailable counts null. The evaluator recomputes counts and compares row
+identity across replay. The evidence ledger retains its existing steps: a
+completed read checkpoint includes the receipt rows and observed intent data.
+Old saved reports can still be read without intent evidence.
+
+## Durable synthetic operation checkpoints
+
+Persisted workbench runs append STARTED and COMPLETED/FAILED checkpoints for each
+baseline/candidate initial observation, invocation, observation, and existing
+idempotency-test invocation/observation. Completion records contain the returned
+synthetic response or independent snapshot; failures retain the exception type.
+STARTED is committed before the operation and never means the operation succeeded.
+A crash between execution and checkpoint commit remains STARTED/unknown.
+These records are exposed by `/api/executions` and `manage_evidence.py executions`
+as `stages`, with `confirmation_required` for unfinished/failed attempts or stages.
+
+Synthetic adapter thresholds, effective dates, scope and evidence line references
+come from the registered `fixtures/**/mock_policy.json` artifacts. They are
+hash-pinned and recorded in the execution manifest. The independently authored
+`pack.json` still supplies cases and expectations to the evaluator, never to the
+adapter. Artifact drift stops execution rather than silently changing rules.
+COMPLETED means a stage returned, not that business assertions passed. Attempt
+COMPLETED means a report was saved atomically, not business success or approval.
+Old histories without checkpoints are preserved without inventing stage evidence.
+Backup/restore retains checkpoints; reopening never resumes or retries work.
+Checkpoint starts reserve their finish row plus existing attempt terminal rows.
+Payload/database/ledger limits still apply. A failed checkpoint write stops the
+runner; the committed prefix requires inspection. This is local synthetic evidence,
+not external effect proof, authentication, or restoration of in-memory mock state.
+
 ## 2026-11-09 오프라인 통합·재현 무결성 보완
 
 오프라인 작업대도 API·FAQ 실행 결과가 등록된 사례 ID·개수·순서와 정확히
@@ -236,6 +276,10 @@ manifest는 정규화한 설정·scope·전체 등록 팩의 `registered_pack_sh
 `verification`은 후보의 응답·상태·재호출 증거를 검증한 assertion 요약이다. 원래 assertion 오류를 보존하고 실제 첫 호출·재호출 snapshot에서 건수, 테이블, 대상, 작업 키, 입력 digest, decision, 기존 상태 보존, 재호출 불변을 확인한다. 건수 일치만으로 PASS가 되지 않는다. 확인된 불일치가 있으면 FAIL, 불일치는 없지만 호출·관찰이 불완전하면 INCOMPLETE다. 필요한 증거가 모두 확인돼야 PASS다. 이는 업무 판정 통과와 다르며 미확인 입력의 진단 검증은 PASS일 수 있다.
 
 `checks`는 true/false/null이다. 실제 관찰이 없거나 비교할 신규 행이 없어 해당 행 검사가 적용되지 않으면 null이다. 쓰기가 없어야 하는 사례의 관찰 건수 0과 재호출 불변이 확인되면 행 관련 check가 null이어도 정상일 수 있다. null을 통과·0·false로 치환하지 않는다. `errors`는 근거에서 확인된 불일치이며, 호출·관찰 실패 세부 정보는 원래 `candidate.invocation_error`, `candidate.observation_error`에 남는다.
+
+### FAQ·API 교차 판단
+
+`manifest.crosscheck_version=1`인 보고서는 사례마다 `crosscheck`를 저장한다. FAQ와 후보 API가 각자 기록한 업무 입력으로 비교하며 미관찰, 조건 불일치, 같은 조건의 판단 일치·불일치를 구분한다. 같은 오답이라도 독립 기대값의 실패가 유지된다. 저장과 읽기에서 교차 결과를 원래 경로 자료와 다시 대조한다. 과거 보고서는 이 필드 없이도 읽힌다. [교차 응답 스키마](crosscheck-v1.schema.json)
 
 
 ## 선택적 로컬 증거 저장 · 0.5.0

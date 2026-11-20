@@ -148,3 +148,23 @@ Final Windows regression: 228 tests OK (25 skipped); frontend 36/36. The sandbox
 run first failed two existing hardlink-fixture creation tests with WinError 5;
 a normally authorized Windows rerun passed without code/test relaxation. Optional
 skips and the remaining power-loss/real-disk-full/enterprise tests are not passes.
+
+
+## Deadline evidence and test interpretation
+
+The total timeout includes process startup, connection, response and parsing.
+`WORKER_STARTED` alone proves only that the parent started a process; it does not
+prove that the child sent HTTP. A timeout with no observed `REQUEST_SENT` keeps
+`dispatch=UNKNOWN`, including when startup consumed the budget. A queued
+`REQUEST_SENT` is drained before checking the deadline and preserves `SENT`.
+Neither outcome proves remote cancellation or absence of a remote effect.
+
+`DeadlineStageTests` deterministically exercises these parent-loop states with
+mock process/clock/channel objects. These tests are not real network evidence.
+The existing disposable-loopback timeout integration test still requires an
+actual observed send and has not been relaxed or given a larger deadline.
+On 2026-11-16 it failed with only PREPARED/WORKER_STARTED/TIMED_OUT in two prior
+runs, then passed in an unchanged focused run. This establishes intermittent
+failure to observe a send before the budget, not the OS/root scheduling cause.
+A later passing run must not be reported as proof that this intermittent issue
+was fixed. Preserve each run's failure/pass result separately.

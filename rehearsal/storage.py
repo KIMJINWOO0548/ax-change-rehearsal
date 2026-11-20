@@ -10,6 +10,8 @@ import sqlite3
 import stat
 import uuid
 from .validation import _reject_constant, _unique_pairs
+from .crosscheck import VERSION as CROSSCHECK_VERSION, compare_case_paths, validate_crosscheck
+from .effects import OBSERVATION_STAGES, validate_effect_report, validate_intent_checkpoint, verify_effect_stages
 
 LIMIT = 100
 ZERO = '0' * 64
@@ -17,6 +19,7 @@ MAX_DATABASE_BYTES = 128 * 1024 * 1024
 MAX_PAYLOAD_BYTES = 1024 * 1024
 MAX_LEDGER_ROWS = LIMIT * 1001
 MAX_ATTEMPTS = 1000
+STAGES = ('initial_observation', 'invocation', 'observation', 'replay_invocation', 'replay_observation')
 SCHEMA = {
     'ledger': 'CREATE TABLE ledger (seq INTEGER PRIMARY KEY, payload TEXT NOT NULL, previous TEXT NOT NULL, hash TEXT NOT NULL)',
     'metadata': 'CREATE TABLE metadata (id INTEGER PRIMARY KEY CHECK(id=1), head TEXT NOT NULL, count INTEGER NOT NULL)',
@@ -43,6 +46,23 @@ def validate_report(report):
             or type(report['readiness']) is not str or len(report['readiness']) > 64
             or any(type(report[k]) is not dict for k in ('configuration', 'scope', 'counts'))):
         raise ValueError('Invalid synthetic report')
+    manifest = report.get('manifest')
+    cases = report.get('cases')
+    if isinstance(manifest, dict) and 'crosscheck_version' in manifest:
+        version = manifest['crosscheck_version']
+        if type(version) is not int or version != CROSSCHECK_VERSION or not isinstance(cases, list) or not cases:
+            raise ValueError('Invalid report crosscheck version')
+        for case in cases:
+            validate_crosscheck(case.get('crosscheck') if isinstance(case, dict) else None)
+            try:
+                recorded = compare_case_paths(case['faq'], case)
+            except (KeyError, TypeError) as error:
+                raise ValueError('Crosscheck path evidence is incomplete') from error
+            if case['crosscheck'] != recorded:
+                raise ValueError('Crosscheck conflicts with saved path evidence')
+    elif isinstance(cases, list) and any(isinstance(case, dict) and 'crosscheck' in case for case in cases):
+        raise ValueError('Missing report crosscheck version')
+    validate_effect_report(report)
     if len(canonical(report).encode('utf-8')) > MAX_PAYLOAD_BYTES - 128:
         raise ValueError('Report too large')
 
@@ -180,6 +200,37 @@ class EvidenceStore:
                     _validate_configuration(payload['configuration'])
                 attempts[payload['attempt_id']] = {**payload, 'state': 'INCOMPLETE'}
                 attempt_sequences[payload['attempt_id']] = index
+            elif payload.get('type') == 'attempt_stage':
+                if (set(payload) != {'type', 'attempt_id', 'operation_key', 'stage', 'state', 'evidence', 'created_at'}
+                        or type(payload['operation_key']) is not str or not 1 <= len(payload['operation_key']) <= 256
+                        or payload['stage'] not in STAGES or payload['state'] not in {'STARTED', 'COMPLETED', 'FAILED'}
+                        or type(payload['created_at']) is not str or len(payload['created_at']) > 64
+                        or type(payload['evidence']) is not dict):
+                    raise StorageError('Invalid stage checkpoint')
+                attempt = attempts.get(payload['attempt_id'])
+                if not attempt or attempt['type'] != 'attempt_started' or attempt['state'] != 'INCOMPLETE':
+                    raise StorageError('Invalid stage binding')
+                stages = attempt.setdefault('stages', [])
+                same = [s for s in stages if s['operation_key'] == payload['operation_key']]
+                evidence, state = payload['evidence'], payload['state']
+                if state == 'STARTED':
+                    if (evidence or any(s['state'] == 'STARTED' for s in stages)
+                            or len(same) >= len(STAGES) or payload['stage'] != STAGES[len(same)]):
+                        raise StorageError('Invalid stage order')
+                    stages.append({**payload, 'started_at': payload['created_at']})
+                else:
+                    if (not same or same[-1]['stage'] != payload['stage'] or same[-1]['state'] != 'STARTED'
+                            or (state == 'COMPLETED' and set(evidence) != {'value'})
+                            or (state == 'FAILED' and (set(evidence) != {'error_type'}
+                                or type(evidence['error_type']) is not str or not 1 <= len(evidence['error_type']) <= 128))):
+                        raise StorageError('Invalid stage finish')
+                    value = evidence.get('value')
+                    if type(value) is dict and 'notification_intents' in value:
+                        if (payload['stage'] not in OBSERVATION_STAGES or
+                                attempt['configuration'].get('policy_version') != 'returns-20270115'):
+                            raise StorageError('Invalid notification stage binding')
+                        validate_intent_checkpoint(value)
+                    same[-1].update(payload)
             elif payload.get('type') == 'probe_finished':
                 if set(payload) != {'type', 'attempt_id', 'outcome', 'created_at'}:
                     raise StorageError('Invalid probe finish')
@@ -201,6 +252,8 @@ class EvidenceStore:
                 attempt = attempts[payload['attempt_id']]
                 if attempt['state'] != 'INCOMPLETE' or attempt['type'] != 'attempt_started': raise StorageError('Invalid execution finish')
                 if payload['state'] == 'COMPLETED':
+                    if any(s['state'] == 'STARTED' for s in attempt.get('stages', [])):
+                        raise StorageError('Unconfirmed stage cannot complete execution')
                     run_id = payload['run_id']
                     if (type(run_id) is not str or run_id not in runs
                             # Matching configuration alone cannot turn an older
@@ -210,6 +263,7 @@ class EvidenceStore:
                             or canonical(runs[run_id]['report']['configuration']) != canonical(attempt['configuration'])
                             or any(x.get('run_id') == run_id for x in attempts.values())):
                         raise StorageError('Execution report mismatch')
+                    verify_effect_stages(runs[run_id]['report'], attempt.get('stages', []))
                 elif payload['run_id'] is not None:
                     raise StorageError('Failed execution cannot have a report')
                 attempt.update(state=payload['state'], run_id=payload['run_id'], finished_at=payload['created_at'])
@@ -236,18 +290,24 @@ class EvidenceStore:
         finally:
             if connection is not None: connection.close()
 
-    def _require_journal_capacity(self, connection, additional_rows, *, finishing_attempt=None):
+    def _require_journal_capacity(self, connection, additional_rows, *, finishing_attempt=None, finishing_stage=False):
         # Reserve completion rows under the same SQLite write transaction as
         # every claimant/writer. No persistent schema or old history is changed.
         _, attempts = self._verify(connection, with_attempts=True)
         reserved = sum(1 if item['type'] == 'probe_started' else 2
                        for key, item in attempts.items()
                        if item['state'] == 'INCOMPLETE' and key != finishing_attempt)
+        reserved += sum(s['state'] == 'STARTED' for key, item in attempts.items()
+                        if item['state'] == 'INCOMPLETE' and key != finishing_attempt
+                        for s in item.get('stages', []))
+        if finishing_stage: reserved -= 1
         count = connection.execute('SELECT count FROM metadata WHERE id=1').fetchone()[0]
         if count + reserved + additional_rows > MAX_LEDGER_ROWS:
             raise StorageLimit('Evidence rows full or reserved for unfinished executions')
 
     def _append(self, connection, payload):
+        if len(canonical(payload).encode('utf-8')) > MAX_PAYLOAD_BYTES:
+            raise StorageLimit('Evidence payload too large')
         head, count = connection.execute('SELECT head,count FROM metadata WHERE id=1').fetchone()
         if count >= MAX_LEDGER_ROWS: raise StorageLimit('Evidence limit reached')
         digest = sha({'previous': head, 'payload': payload})
@@ -317,6 +377,18 @@ class EvidenceStore:
             return {**payload, 'state': 'INCOMPLETE'}, True
         return self._operate(action)
 
+    def record_stage(self, attempt_id, operation_key, stage, state, evidence):
+        payload = json.loads(canonical({'type': 'attempt_stage', 'attempt_id': attempt_id,
+            'operation_key': operation_key, 'stage': stage, 'state': state, 'evidence': evidence,
+            'created_at': dt.datetime.now(dt.timezone.utc).isoformat()}))
+        def action(connection, runs):
+            self._require_pending(connection, attempt_id)
+            self._require_journal_capacity(connection, 2 if state == 'STARTED' else 1,
+                                           finishing_stage=state != 'STARTED')
+            self._append(connection, payload)
+            self._verify(connection)
+        return self._operate(action)
+
     def record_probe(self, attempt_id, outcome):
         from .probe_journal import validate_outcome
         validate_outcome(outcome, attempt_id)
@@ -345,8 +417,12 @@ class EvidenceStore:
         return self._operate(lambda connection, runs: self._finish(connection, attempt_id, 'FAILED'))
 
     def list_attempts(self):
-        return self._operate(lambda connection, runs: list(reversed(list(
-            self._verify(connection, with_attempts=True)[1].values()))))
+        def action(connection, runs):
+            attempts = self._verify(connection, with_attempts=True)[1]
+            return [{**item, 'confirmation_required': item['state'] not in {'COMPLETED', 'RECORDED'}
+                     or any(s['state'] != 'COMPLETED' for s in item.get('stages', []))}
+                    for item in reversed(list(attempts.values()))]
+        return self._operate(action)
 
     def list_runs(self):
         return self._operate(lambda connection, runs: [

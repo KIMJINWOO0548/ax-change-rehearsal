@@ -36,7 +36,7 @@ The JSON includes both full source block lists and `changes` with `equal`,
 `replace`, `insert` or `delete`. Cite an anchor together with its document hash
 and line range. Inspect all changes and unchanged exclusions; a text match is
 not a legal/semantic interpretation. Review metadata is not persisted by this
-command. It never edits fixtures, calls AI, reads arbitrary files, renders links,
+command. Registered-fixture mode never edits fixtures, calls AI, reads arbitrary files, renders links,
 or changes the UI. A schema/parser version is included for snapshots. Labels
 are a documented conservative scanner, not full CommonMark compatibility.
 
@@ -50,3 +50,31 @@ registered source and document hashes when exact complete bytes matter.
 The 256 KiB/line/block limits bound the snapshot parser, not every registry I/O:
 the existing policy fingerprint verifier reads its fixed registered artifacts in
 full before/after inspection. This is not an arbitrary untrusted upload service.
+
+## Explicit local Markdown input (T05 second slice)
+
+```
+python inspect_sources.py --before before.md --after after.md
+```
+
+This mutually exclusive alternative to `--policy-version` reads two explicit
+local `.md`/`.markdown` UTF-8 files. It neither copies nor uploads them. Output
+contains their source text on stdout: inspect or redirect it locally, and do not
+publish private document output. No absolute local paths appear in the result or
+operational error. Unlike registered fixtures, this result has provenance
+`unverified_local_files`, no synthetic-only claim, and `business_validated: false`.
+Human review is still required; no rule, oracle, approval or policy registry is
+changed. This is a read-only source comparison, not a document management system.
+
+Files must be regular local files, not URLs, UNC/device paths, alternate streams,
+symlinks or junctions. On Windows the resolved absolute path is checked again,
+GetDriveTypeW rejects mapped remote/unknown drives, and reparse attributes are
+rejected even on Python versions without is_junction (including cloud placeholders).
+On POSIX this does not identify network-mounted filesystems; use an operator-known
+local filesystem. Read size is bounded before and during I/O. File identity,
+length and modification time are checked across path/open-handle reads and again
+after comparison. On Windows ctime is not compared because path/handle APIs can
+expose different creation/change values. This detects ordinary edits/replacement,
+not adversarial timestamp restoration or atomic snapshots of two files. Stop
+editing both inputs during inspection. PDF/OCR/JSON ingestion, saved review
+history, semantic extraction and UI integration remain separate unfinished work.

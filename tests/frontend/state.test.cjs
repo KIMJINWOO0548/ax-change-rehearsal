@@ -27,7 +27,7 @@ function setup({invalidPolicy=false,persistent=false,session=memoryStorage(),sco
  const document={getElementById:id=>ids[id],createElement:tag=>new Node(tag),body:new Node('body'),
   querySelectorAll(selector){if(selector.includes('.rail'))return links;if(selector==='#case-rows button')return descendants(ids['case-rows']).filter(n=>n.tag==='button');if(selector.includes('input'))return radios.filter(r=>selector.includes(r.name));return[];},
   querySelector(selector){if(selector.includes('.rail'))return links[0];return radios.find(r=>r.checked&&selector.includes(r.name));}};
- const fetch=async(path,options)=>{calls.push({path,options});return path==='/api/context'?{ok:true,json:async()=>context}:next();};
+ const fetch=async(path,options)=>{calls.push({path,options});return path.startsWith('/api/context')?{ok:true,json:async()=>context}:next();};
  const sandbox={sessionStorage:session,crypto:require('node:crypto').webcrypto,document,fetch,console,AbortController,setTimeout,clearTimeout,Blob,URL,Set,Map,Option:class extends Node{constructor(text,value){super('option');this.textContent=text;this.value=value;}}};
  vm.createContext(sandbox);vm.runInContext(fs.readFileSync('web/review.js','utf8'),sandbox);vm.runInContext(source,sandbox);
  const settle=()=>new Promise(resolve=>setImmediate(resolve));
@@ -44,7 +44,7 @@ function setup({invalidPolicy=false,persistent=false,session=memoryStorage(),sco
     scope:{registered_total:2,selected_total:chosen.length,selected_case_ids:config.case_ids,omitted_case_ids:cases.filter(c=>!config.case_ids.includes(c.id)).map(c=>c.id),complete:chosen.length===2},
     readiness:counts.FAIL?'BLOCKED':'REVIEW_REQUIRED',counts,total:chosen.length,limits:[],cases:rows};
  };
- return {ids,calls,settle,result,run:()=>ids['run-form'].handlers.submit({preventDefault(){}}),setNext:fn=>{next=fn;},good:()=>({ok:true,json:async()=>result()}),
+ return {ids,calls,settle,result,context,run:()=>ids['run-form'].handlers.submit({preventDefault(){}}),setNext:fn=>{next=fn;},good:()=>({ok:true,json:async()=>result()}),
    change(name,value){radios.filter(r=>r.name===name).forEach(r=>r.checked=r.value===value);ids['run-form'].handlers.change();}};
 }
 test('request headers, selected scope, duplicate guard, invalidation, failure and retry',async()=>{
@@ -61,7 +61,7 @@ test('request headers, selected scope, duplicate guard, invalidation, failure an
 test('discard changed-revision response and stop busy state',async()=>{
  const s=setup();await s.settle();let resolve;s.setNext(()=>new Promise(r=>resolve=r));const pending=s.run();s.change('api_version','corrected');resolve(s.good());await pending;
  assert.equal(s.ids.download.disabled,true);assert.equal(s.ids['case-rows'].children.length,0);assert.equal(s.ids.run.disabled,false);
- assert.match(s.ids['run-status'].textContent,/응답을 사용하지/);
+ assert.match(s.ids['run-status'].textContent,/응답을 화면에 적용하지 않았습니다/);
 });
 test('changed policy blocks requests',async()=>{
  const s=setup({invalidPolicy:true});await s.settle();assert.equal(s.ids.run.disabled,true);assert.match(s.ids['run-status'].textContent,/정책 문서/);await s.run();assert.equal(s.calls.length,1);
@@ -80,7 +80,7 @@ test('search changes visible rows without silently changing selection',async()=>
 test('mismatched result scope and counts fail closed',async()=>{
  for(const mutate of [r=>r.scope.complete=false,r=>r.counts.FAIL=99,r=>r.cases.pop(),r=>r.readiness='PASS_WITHIN_REGISTERED_SCOPE']){
   const s=setup();await s.settle();s.setNext(async()=>({ok:true,json:async()=>{const r=s.result();mutate(r);return r;}}));await s.run();
-  assert.equal(s.ids.download.disabled,true);assert.match(s.ids['run-status'].textContent,/실행하지 못/);
+  assert.equal(s.ids.download.disabled,true);assert.match(s.ids['run-status'].textContent,/실행 완료 여부를 확인하지 못했습니다/);
  }
 });
 test('failure-only rerun is explicit selection and differing scopes cannot compare',async()=>{
@@ -103,7 +103,7 @@ test('no dynamic HTML or external dependencies in shipped UI',()=>{
 test('missing omitted cases cannot conceal unexecuted scope',async()=>{
  const s=setup();await s.settle();s.ids['select-boundary'].click();
  s.setNext(async()=>({ok:true,json:async()=>{const r=s.result();r.scope.omitted_case_ids=[];return r;}}));
- await s.run();assert.equal(s.ids.download.disabled,true);assert.match(s.ids['run-status'].textContent,/실행하지 못/);
+ await s.run();assert.equal(s.ids.download.disabled,true);assert.match(s.ids['run-status'].textContent,/실행 완료 여부를 확인하지 못했습니다/);
 });
 
 
@@ -117,7 +117,8 @@ test('workspace overview distinguishes ready, busy, failure, stale, empty and er
  s.change('faq_version','corrected');assert.match(s.ids['workspace-title'].textContent,/재실행 필요/);assert.equal(s.ids['review-priority'].disabled,true);
  s.ids['select-none'].click();assert.match(s.ids['workspace-title'].textContent,/사례를 선택/);
  s.ids['select-all'].click();s.setNext(async()=>({ok:false,json:async()=>({error:{message:'offline'}})}));await s.run();
- assert.match(s.ids['workspace-title'].textContent,/실행 확인 필요/);
+ assert.equal(s.ids['workspace-title'].textContent,'실행 완료 미확인');
+ assert.doesNotMatch(s.ids['workspace-next'].textContent,/다시 실행/);
 });
 
 test('overview does not turn unknown or partial scope into approval',async()=>{
@@ -145,7 +146,11 @@ test('pending keys survive reload, another configuration, and isolate workspaces
  const a=setup({persistent:true,session});await a.settle();a.setNext(async()=>{throw Error('lost');});await a.run();const original=key(a);
  a.change('faq_version','corrected');await a.run();assert.notEqual(key(a),original);
  a.change('faq_version','stale');await a.run();assert.equal(key(a),original);
- const b=setup({persistent:true,session});await b.settle();b.setNext(async()=>{throw Error('lost');});await b.run();assert.equal(key(b),original);
+ const b=setup({persistent:true,session});await b.settle();
+ assert.equal(b.ids['workspace-action'].href,'#archive-executions');
+ assert.match(b.ids['run-status'].textContent,/완료 응답을 확인하지 못한/);
+ assert.equal(b.calls.filter(c=>c.path==='/api/run').length,0);
+ b.setNext(async()=>{throw Error('lost');});await b.run();assert.equal(key(b),original);
  const c=setup({persistent:true,session,scope:'b'.repeat(64)});await c.settle();c.setNext(async()=>{throw Error('lost');});await c.run();assert.notEqual(key(c),original);
 });
 test('storage denied or malformed blocks execution before POST',async()=>{
@@ -165,4 +170,32 @@ test('quota failure, silent failed writes and full store never send untracked re
   const s=setup({persistent:true,session});await s.settle();s.setNext(async()=>s.good());await s.run();
   assert.equal(s.calls.filter(c=>c.path==='/api/run').length,0);
  }
+});
+
+
+test('policy selection refreshes context, clears results and keeps pending identities separate',async()=>{
+ const session=memoryStorage(),s=setup({persistent:true,session});await s.settle();
+ s.setNext(async()=>s.good());await s.run();assert.equal(s.ids.download.disabled,false);
+ s.context.policy_version='returns-20270115';s.context.change.effective_date='2027-01-15';s.context.change.new_window_days=21;
+ s.context.cases.splice(1);s.context.cases[0].label='Alternate boundary';
+ s.ids['policy-version'].value='returns-20270115';await s.ids['policy-version'].handlers.change();
+ assert.equal(s.calls.at(-1).path,'/api/context?policy_version=returns-20270115');
+ assert.equal(s.ids['result-content'].hidden,true);assert.equal(s.ids.download.disabled,true);
+ assert.match(s.ids['effective-date'].textContent,/2027-01-15/);assert.match(s.ids['policy-change'].textContent,/21/);
+ assert.equal(s.ids['scenario-list'].children.length,1);assert.equal(s.calls.filter(c=>c.path==='/api/run').length,1);
+ s.setNext(async()=>{throw Error('lost');});await s.run();
+ const selected=s.calls.at(-1);assert.equal(JSON.parse(selected.options.body).policy_version,'returns-20270115');
+ const originalKey=selected.options.headers['Idempotency-Key'];
+ s.context.policy_version=null;s.ids['policy-version'].value='';await s.ids['policy-version'].handlers.change();await s.run();
+ assert.notEqual(s.calls.at(-1).options.headers['Idempotency-Key'],originalKey);
+ s.context.policy_version='returns-20270115';s.ids['policy-version'].value='returns-20270115';await s.ids['policy-version'].handlers.change();await s.run();
+ assert.equal(s.calls.at(-1).options.headers['Idempotency-Key'],originalKey);
+});
+
+test('mismatched policy result and mismatched context fail closed',async()=>{
+ const s=setup();await s.settle();s.setNext(async()=>({ok:true,json:async()=>({...s.result(),configuration:{faq_version:'stale',api_version:'stale',case_ids:['S01','S02'],policy_version:'returns-20270115'}})}));
+ await s.run();assert.equal(s.ids.download.disabled,true);
+ s.ids['policy-version'].value='returns-20270115';await s.ids['policy-version'].handlers.change();
+ assert.equal(s.ids.run.disabled,true);assert.equal(s.ids['scenario-list'].children.length,0);assert.equal(s.ids['before-source'].textContent,'');
+ assert.match(s.ids.connection.textContent,/정책 버전/);
 });

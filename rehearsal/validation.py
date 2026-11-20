@@ -69,15 +69,14 @@ def validate_pack(pack: dict, root: Path, policy_version=None) -> None:
     date = pack['effective_date']
     require(type(date) is str and re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}', date), 'Invalid effective date')
     dt.date.fromisoformat(date)
-    # A date edit cannot select different rules. Explicit versions must match
-    # their pinned registered pack; legacy adapters retain their original date.
+    # The independent expectation pack must agree with the selected adapter rules.
     if policy_version is not None:
         from .policies import get_policy
         selected_policy = get_policy(policy_version)
         selected_policy.verify_pack(pack)
         supported_date = selected_policy.effective_date
     else:
-        supported_date = '2026-12-01'
+        supported_date = adapter.policy['effective_date']
     require(date == supported_date, 'Effective date does not match the selected mock policy')
     require(pack['input_fields'] == adapter.fields, 'Input contract does not match adapter')
     require(pack['rules_authority'] == 'source_documents_after_manual_review', 'Unsupported rules authority')

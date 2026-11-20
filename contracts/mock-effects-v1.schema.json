@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AX synthetic notification intent observations v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["operation_key", "expectations", "observations", "changes", "findings"],
+  "properties": {
+    "operation_key": {"$ref": "#/$defs/key"},
+    "expectations": {"$ref": "#/$defs/counts"},
+    "observations": {
+      "type": "object", "additionalProperties": false, "required": ["initial", "first", "replay"],
+      "properties": {"initial": {"$ref": "#/$defs/observation"}, "first": {"$ref": "#/$defs/observation"}, "replay": {"$ref": "#/$defs/observation"}}
+    },
+    "changes": {
+      "type": "object", "additionalProperties": false, "required": ["first", "replay"],
+      "properties": {
+        "first": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/counts"}]},
+        "replay": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/counts"}]}
+      }
+    },
+    "findings": {
+      "type": "array", "uniqueItems": true,
+      "items": {"enum": ["MISSING", "DUPLICATE", "WRONG_ROLE", "UNEXPECTED_EFFECT", "PREEXISTING_CHANGED", "REPLAY_CHANGED", "UNCONFIRMED"]}
+    }
+  },
+  "$defs": {
+    "key": {"type": "string", "pattern": "^[A-Za-z0-9_:-]{1,128}$"},
+    "count": {"type": "integer", "minimum": 0, "maximum": 64},
+    "counts": {
+      "type": "object", "additionalProperties": false, "required": ["REVIEWER", "CUSTOMER"],
+      "properties": {"REVIEWER": {"$ref": "#/$defs/count"}, "CUSTOMER": {"$ref": "#/$defs/count"}}
+    },
+    "row": {
+      "type": "object", "additionalProperties": false, "required": ["operation_key", "id", "role", "kind"],
+      "properties": {
+        "operation_key": {"$ref": "#/$defs/key"}, "id": {"type": "string", "pattern": "^intent_[1-9][0-9]{0,7}$"},
+        "role": {"enum": ["REVIEWER", "CUSTOMER"]}, "kind": {"const": "NOTIFICATION_INTENT"}
+      }
+    },
+    "observation": {
+      "type": "object", "additionalProperties": false, "required": ["state", "rows", "reason"],
+      "properties": {"state": {"enum": ["OBSERVED", "UNCONFIRMED", "NOT_REACHED"]}, "rows": {}, "reason": {}},
+      "oneOf": [
+        {"properties": {"state": {"const": "OBSERVED"}, "rows": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/row"}}, "reason": {"type": "null"}}},
+        {"properties": {"state": {"const": "UNCONFIRMED"}, "rows": {"type": "null"}, "reason": {"const": "OBSERVATION_FAILED"}}},
+        {"properties": {"state": {"const": "NOT_REACHED"}, "rows": {"type": "null"}, "reason": {"const": "STAGE_NOT_REACHED"}}}
+      ]
+    }
+  }
+}

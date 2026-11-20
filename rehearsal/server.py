@@ -7,10 +7,11 @@ import os
 import re
 import secrets
 import uuid
+from urllib.parse import urlsplit, parse_qs
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .app import build_context, execute_run
-from .engine import ROOT
+from .engine import ROOT, stage_recorder
 from .validation import _reject_constant, _unique_pairs
 from .storage import EvidenceStore, StorageError, StorageConflict, ExecutionConflict, StorageLimit, RunNotFound, storage_info
 
@@ -38,12 +39,16 @@ def execute_persisted(store, configuration, runner, *, request_key=None):
             saved = store.get(attempt['run_id'])
             return {**saved['report'], 'record': saved['record']}
 
+    token = stage_recorder.set(lambda key, stage, state, evidence:
+        store.record_stage(attempt_id, key, stage, state, evidence))
     try:
         result = runner(configuration)
     except Exception:
         # Failure to save this marker leaves INCOMPLETE, never a false success.
         store.fail_attempt(attempt_id)
         raise
+    finally:
+        stage_recorder.reset(token)
     # A finished computation with an unconfirmed save is not an execution failure.
     # Preserve INCOMPLETE for inspection; never automatically rerun.
     record = store.save(result, attempt_id=attempt_id)
@@ -112,9 +117,23 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self._trusted_request():
             return
-        if self.path == '/api/context':
+        if urlsplit(self.path).path == '/api/context':
             try:
-                context = build_context()
+                query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                if set(query) - {'policy_version'}:
+                    self._error(404, 'NOT_FOUND', '등록되지 않은 경로입니다.')
+                    return
+                if query and len(query['policy_version']) != 1:
+                    raise ValueError('Invalid context selection')
+                selected = query.get('policy_version', [None])[0]
+                if selected is not None:
+                    from .policies import get_policy
+                    get_policy(selected)
+            except ValueError:
+                self._error(400, 'INVALID_POLICY_VERSION', '등록된 정책 버전을 하나 선택하세요.')
+                return
+            try:
+                context = build_context(selected) if selected is not None else build_context()
                 if self.server.store:
                     self.server.store.list_runs()  # Fail closed if the ledger was altered.
                     context['limits'] = [line for line in context['limits'] if not line.startswith('실행은 메모리에')]

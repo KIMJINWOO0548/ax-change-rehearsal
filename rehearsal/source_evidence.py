@@ -1,7 +1,10 @@
 """Bounded source citations, not Markdown rendering or executable policy extraction."""
 import difflib
 import hashlib
+import os
+from pathlib import Path
 import re
+import stat
 
 MAX_BYTES = 256 * 1024
 MAX_LINES = 4096
@@ -104,3 +107,86 @@ def inspect_policy_sources(identifier):
     if policy.fingerprints() != expected:
         raise ValueError('Registered source changed during inspection')
     return {'policy_version': identifier, 'synthetic_only': True, **result}
+
+
+def _file_identity(info):
+    # Windows stat/fstat can expose different creation/change ctime values.
+    # Device/inode/length/mtime remain comparable across the path and handle.
+    identity = (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
+    return identity if os.name == 'nt' else identity + (info.st_ctime_ns,)
+
+
+def _windows_local_drive(path):
+    import ctypes
+    get_type = ctypes.windll.kernel32.GetDriveTypeW
+    get_type.argtypes = [ctypes.c_wchar_p]
+    get_type.restype = ctypes.c_uint
+    # Removable, fixed, optical and RAM disks; remote/unknown roots fail closed.
+    return get_type(path.anchor) in {2, 3, 5, 6}
+
+
+def _local_path(value, *, allowed_suffixes=('.md', '.markdown')):
+    raw = os.fspath(value)
+    if (not isinstance(raw, str) or '\x00' in raw or '://' in raw
+            or raw.replace('\\', '/').startswith('//') or ':' in os.path.splitdrive(raw)[1]):
+        raise ValueError('Only local Markdown files are supported')
+    path = Path(os.path.abspath(raw))
+    if str(path).replace('\\', '/').startswith('//'):
+        raise ValueError('Network source paths are unsupported')
+    if os.name == 'nt' and not _windows_local_drive(path):
+        raise ValueError('Only local drives are supported')
+    if path.suffix.lower() not in allowed_suffixes:
+        raise ValueError('Unsupported local file extension')
+    for item in (path, *path.parents):
+        if item.is_symlink() or (hasattr(item, 'is_junction') and item.is_junction()):
+            raise ValueError('Linked source paths are unsupported')
+        if os.name == 'nt':
+            try:
+                attributes = getattr(item.lstat(), 'st_file_attributes', 0)
+            except FileNotFoundError:
+                continue
+            except OSError:
+                raise ValueError('Local source unavailable') from None
+            # Also works on supported Python versions before is_junction exists.
+            if attributes & getattr(stat, 'FILE_ATTRIBUTE_REPARSE_POINT', 0x400):
+                raise ValueError('Reparse source paths are unsupported')
+    return path
+
+
+def _read_local_markdown(value, *, allowed_suffixes=('.md', '.markdown'), maximum=MAX_BYTES):
+    path = _local_path(value, allowed_suffixes=allowed_suffixes)
+    try:
+        before = path.lstat()
+        if not stat.S_ISREG(before.st_mode) or before.st_size > maximum:
+            raise ValueError('Unsupported source type or size')
+        fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_BINARY', 0))
+        with os.fdopen(fd, 'rb') as stream:
+            opened = os.fstat(stream.fileno())
+            if not stat.S_ISREG(opened.st_mode) or _file_identity(opened) != _file_identity(before):
+                raise ValueError('Source changed before inspection')
+            raw = stream.read(maximum + 1)
+            if _file_identity(os.fstat(stream.fileno())) != _file_identity(before):
+                raise ValueError('Source changed during inspection')
+        if len(raw) > maximum or _file_identity(path.lstat()) != _file_identity(before):
+            raise ValueError('Source changed during inspection')
+        return path, raw, _file_identity(before)
+    except OSError:
+        raise ValueError('Local source unavailable') from None
+
+
+def inspect_local_sources(before, after):
+    """Read explicitly selected local Markdown only; provenance is unverified.
+
+    Nothing is uploaded, executed, persisted, or inferred to be synthetic.
+    Metadata drift checks are not a lock against a hostile local file owner.
+    """
+    left, right = _read_local_markdown(before), _read_local_markdown(after)
+    result = compare_sources(left[1], right[1])
+    try:
+        for path, raw, identity in (left, right):
+            _local_path(path)
+            if _file_identity(path.lstat()) != identity:
+                raise ValueError('Source changed during comparison')
+    except OSError:
+        raise ValueError('Local source unavailable') from None
+    return {'provenance': 'unverified_local_files', 'business_validated': False, **result}

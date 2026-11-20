@@ -2,6 +2,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const review = require('../../web/review.js');
 const {manifest,expected}=require('./comparison-fixtures.cjs');
+test('crosscheck labels separate agreement, different conditions and old records', () => {
+  assert.equal(review.crosscheckText({version:1,state:'ALIGNED'}), '동일 조건에서 판단 일치');
+  assert.match(review.crosscheckText({version:1,state:'CONTEXT_MISMATCH',changed_fields:['elapsed_days']}), /경과 일수/);
+  assert.equal(review.crosscheckText(undefined), '교차 근거 미기록');
+  assert.equal(review.crosscheckText({version:2,state:'ALIGNED'}), '교차 근거 확인 불가');
+});
 const make = (values = ['FAIL', 'INCONCLUSIVE']) => ({
   scope: {selected_case_ids: ['S01', 'S02'], complete: true, registered_total: 2},
   manifest: manifest(),
@@ -81,4 +87,13 @@ test('each required provenance entry and complete baseline/candidate expectation
     r=>delete r.cases[0].baseline.expected,
     r=>r.cases[0].candidate.expected.state_delta.count=-1
   ]) {const a=make(),b=make();alter(a);alter(b);assert.equal(review.compareRuns(a,b).comparable,false);}
+});
+
+test('notification formatting distinguishes confirmed zero, missing reads and duplicate intents', () => {
+  assert.equal(review.effectsText(null),'효과 근거 미기록');
+  const effect = {expectations:{REVIEWER:1,CUSTOMER:0},changes:{first:{REVIEWER:2,CUSTOMER:0},replay:null},findings:['DUPLICATE','UNCONFIRMED']};
+  assert.match(review.effectsText(effect),/검토자 기대 1건 · 최초 2건 · 재호출 확인 불가/);
+  assert.match(review.effectsText(effect),/고객 기대 0건 · 최초 0건.*중복 · 관찰 미확인/);
+  assert.match(review.intentCheckpointText({state:'OBSERVED',rows:[]}),/검토자 0건, 고객 0건/);
+  assert.match(review.intentCheckpointText({state:'UNCONFIRMED',rows:null}),/확인 불가/);
 });

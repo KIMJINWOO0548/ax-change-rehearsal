@@ -1,4 +1,6 @@
 import copy,tempfile,unittest
+import hashlib
+from pathlib import Path
 from unittest.mock import patch,Mock
 from rehearsal.app import execute_run
 from rehearsal.adapters import canonical
@@ -8,6 +10,30 @@ from rehearsal.server import execute_persisted
 from rehearsal.storage import EvidenceStore,ExecutionConflict
 
 class PolicyVersionTests(unittest.TestCase):
+ def test_every_adapter_uses_a_separate_pinned_policy_artifact(self):
+  from rehearsal.engine import ROOT, load_packs, run_pack
+  versions = [(pack, None, f"fixtures/{pack['pack_id']}/mock_policy.json") for pack in load_packs()]
+  versions.append((get_policy('returns-20270115').load_pack(), 'returns-20270115',
+                   'fixtures/customer_service/versions/returns-20270115/mock_policy.json'))
+  for pack, version, path in versions:
+   with self.subTest(path=path):
+    result = run_pack(pack, policy_version=version)
+    self.assertIn(path, result['manifest']['sources'])
+    self.assertEqual(result['manifest']['sources'][path], hashlib.sha256((ROOT / path).read_bytes()).hexdigest())
+    self.assertEqual(result['counts'].get('FAIL', 0), 0)
+
+ def test_changed_adapter_policy_is_refused_before_invocation(self):
+  from rehearsal.engine import load_packs, run_pack
+  pack = load_packs(['manufacturing'])[0]
+  original = Path.read_text
+  def changed(path, *args, **kwargs):
+   value = original(path, *args, **kwargs)
+   return value+' ' if path.as_posix().endswith('manufacturing/mock_policy.json') else value
+  with patch.object(Path,'read_text',changed), patch('rehearsal.engine.run_side') as run:
+   with self.assertRaises(ValueError):
+    run_pack(pack)
+   run.assert_not_called()
+
  def config(self,version='returns-20270115'):
   return dict(faq_version='corrected',api_version='corrected',policy_version=version)
  def test_distinct_policy_dates_and_explicit_boundaries(self):

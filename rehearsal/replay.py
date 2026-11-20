@@ -9,6 +9,7 @@ import re
 
 from .adapters import canonical, digest
 from .app import _validate_configuration, execute_run
+from .effects import EffectManifestMismatch
 from .storage import REPORT_ALLOWED, validate_report
 
 
@@ -33,8 +34,12 @@ The caller must separately verify the saved record's storage integrity.
         raise ValueError('Only registered synthetic reports can be replayed.')
     # Identity/time are excluded from deterministic comparison, not optional.
     # Attached review metadata is outside the report and conveys no approval.
+    incompatible_effects = False
     try:
-        validate_report({key: value for key, value in report.items() if key in REPORT_ALLOWED})
+        try:
+            validate_report({key: value for key, value in report.items() if key in REPORT_ALLOWED})
+        except EffectManifestMismatch:
+            incompatible_effects = True
         if dt.datetime.fromisoformat(report['created_at']).tzinfo is None:
             raise ValueError('Missing timestamp timezone')
     except (ValueError, TypeError, RecursionError):
@@ -59,7 +64,7 @@ The caller must separately verify the saved record's storage integrity.
               'synthetic_only': True, 'deployment_approval': False,
               'scope': fresh['scope'], 'counts': fresh['counts'],
               'readiness': fresh['readiness'], 'changed_sections': []}
-    if not _same_evidence(fresh['manifest'], manifest):
+    if incompatible_effects or not _same_evidence(fresh['manifest'], manifest):
         return {**result, 'status': 'INCOMPATIBLE',
                 'reason': 'Source, policy, scenario, or FAQ evidence differs; review a new run.'}
     ignored = {'run_id', 'created_at', 'record'}

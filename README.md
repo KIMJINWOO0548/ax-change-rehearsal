@@ -127,5 +127,27 @@ Markdown blocks and exact before/after changes for a registered synthetic policy
 `returns-20270115` selects the second fixture. Output retains unchanged exclusions,
 line ranges, content hashes and explicit human-review requirements. It does not
 extract executable rules or interpret legal meaning. No UI change, network call,
-PDF/OCR or arbitrary document import is included. See
+PDF/OCR or rule extraction is included. For explicit read-only local Markdown
+comparison use `python inspect_sources.py --before before.md --after after.md`.
+Its stdout includes source text; do not publish private document output. See
 [the bounded source-evidence design](docs/source-evidence-design.md).
+
+
+Source-bound review statements can be saved locally with `review_sources.py record`
+and checked with `review_sources.py verify`. A later source edit makes the binding
+STALE; CURRENT does not mean approved. See [source-review contracts and examples](docs/source-review-design.md).
+
+
+Add `--candidates` to `inspect_sources.py` to view cited date/quantity/boundary
+change candidates. They remain UNREVIEWED and cannot generate or approve rules.
+See [lexical candidate scope](docs/change-candidate-design.md).
+
+
+Use `review_candidates.py` for explicit per-candidate dispositions and unresolved
+questions. Source drift invalidates all current dispositions; it never promotes
+candidates into executable or approved rules. See [candidate review workflow](docs/candidate-review-design.md).
+
+
+For explicit local JSON evidence use `inspect_json_sources.py --before before.json --after after.json`. It preserves JSON Pointer/type/number-spelling distinctions
+and rejects duplicate keys; output contains source values, not a policy verdict.
+See [JSON input scope](docs/json-source-design.md).

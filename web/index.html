@@ -28,6 +28,7 @@
   <button id="reload" class="secondary" hidden>다시 연결</button>
   <section id="policy" aria-labelledby="policy-title">
     <div class="section-heading"><h2 id="policy-title"><span>01</span> 변경 확인</h2><p id="effective-date"></p></div>
+    <label class="policy-selector" for="policy-version">정책 팩 버전<select id="policy-version" disabled><option value="">기본 정책</option></select></label>
     <p id="policy-change" class="change-summary"></p>
     <div class="document-grid">
       <article class="document"><header><h3>변경 전</h3><span id="before-days"></span></header>
@@ -119,6 +120,11 @@
     <p id="archive-mode" class="notice">로컬 저장 설정을 확인하는 중입니다.</p>
     <p class="section-note">합성 자료 전용입니다. 로그인·권한 분리·암호화·실제 시스템 연결은 제공하지 않습니다. 검토 메모는 신원 확인, 승인, 전자서명 또는 배포 허가가 아닙니다.</p>
     <p id="archive-status" role="status" aria-live="polite" class="section-note"></p>
+    <section id="archive-executions" aria-labelledby="archive-execution-title" hidden>
+      <h3 id="archive-execution-title">저장된 실행 상태</h3>
+      <p id="archive-execution-status" role="status" class="section-note"></p>
+      <ul id="archive-execution-list" class="archive-events"></ul>
+    </section>
     <div class="archive-filters"><label for="archive-filter">검토 표시<select id="archive-filter"><option value="all">전체 기록</option><option value="UNREVIEWED">미검토</option><option value="CHANGES_REQUESTED">수정 요청</option><option value="REVIEWED">검토함 · 승인 아님</option></select></label><p id="archive-filter-count" role="status"></p></div>
     <ul id="archive-list" class="archive-list" aria-label="저장된 합성 실행"></ul>
     <section id="archive-detail" class="inspector" hidden tabindex="-1" aria-labelledby="archive-detail-title">

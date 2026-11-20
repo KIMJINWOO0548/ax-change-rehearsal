@@ -30,6 +30,17 @@ class StorageTests(unittest.TestCase):
         return {'expected_revision': 0, 'report_sha256': self.record['sha256'],
                 'status': 'REVIEWED', 'note': '합성 검토', **changes}
 
+    def test_recovery_marker_added_after_open_blocks_existing_handle(self):
+        marker = self.path / '.recovery-incomplete'
+        before = self.store.path.read_bytes()
+        marker.write_text('operator recovery in progress')
+        for action in (self.store.list_runs, lambda: self.store.save(report()),
+                       lambda: self.store.review(self.report['run_id'], self.payload())):
+            with self.assertRaises(StorageError):
+                action()
+        self.assertEqual(before, self.store.path.read_bytes())
+        self.assertEqual(marker.read_text(), 'operator recovery in progress')
+
     def test_restart_preserves_exact_report_scope_and_review(self):
         original = copy.deepcopy(self.report)
         detail = self.store.review(self.report['run_id'], self.payload())

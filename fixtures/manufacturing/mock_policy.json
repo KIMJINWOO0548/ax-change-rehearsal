@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "effective_date": "2026-12-01",
+  "region": "KR",
+  "baseline_threshold": 100,
+  "candidate_threshold": 80,
+  "allowed_groups": ["A", "B"],
+  "allowed_modes": ["normal", "special"],
+  "group_thresholds": {"B": 120},
+  "mode_thresholds": {"special": 60}
+}

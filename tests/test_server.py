@@ -26,7 +26,7 @@ class ServerTests(unittest.TestCase):
 
     def request(self, method='GET', path='/api/context', body=None, headers=None):
         self.assertIsNotNone(self.server, 'Local HTTP workbench is not implemented')
-        connection = http.client.HTTPConnection('127.0.0.1', self.server.server_port, timeout=3)
+        connection = http.client.HTTPConnection('127.0.0.1', self.server.server_port, timeout=getattr(self, 'request_timeout', 3))
         connection.request(method,path,body=body,headers=headers or {})
         response = connection.getresponse()
         result = (response.status, dict(response.getheaders()), response.read())
@@ -49,6 +49,21 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(headers['Cache-Control'],'no-store')
         self.assertEqual(headers['X-Content-Type-Options'],'nosniff')
         self.assertNotIn('Access-Control-Allow-Origin',headers)
+
+    def test_selected_policy_context_has_its_own_cases_sources_and_date(self):
+        status, _, body = self.request(path='/api/context?policy_version=returns-20270115')
+        self.assertEqual(status, 200)
+        context = json.loads(body)
+        self.assertEqual(context['policy_version'], 'returns-20270115')
+        self.assertEqual(context['change']['effective_date'], '2027-01-15')
+        self.assertEqual(context['change']['new_window_days'], 21)
+        self.assertEqual(context['policy_change_line'], 5)
+        self.assertEqual(len(context['cases']), 8)
+        self.assertTrue(context['policy_review_valid'])
+        self.assertIn('versions/returns-20270115/', context['policy']['after']['path'])
+        self.assertIsNone(json.loads(self.request()[2])['policy_version'])
+        for query in ('policy_version=unknown', 'policy_version=', 'policy_version=returns-20270115&policy_version=returns-20261201'):
+            self.assertEqual(self.request(path='/api/context?'+query)[0], 400)
 
     def test_http_subset_returns_canonical_scope_and_manifest(self):
         configuration = {'faq_version': 'corrected', 'api_version': 'corrected',
@@ -167,6 +182,8 @@ class ServerTests(unittest.TestCase):
 
 
 class PersistentServerTests(unittest.TestCase):
+    # Match the UI deadline: every operation checkpoint requires a durable commit.
+    request_timeout = 30
     request = ServerTests.request
     token = ServerTests.token
     post = ServerTests.post
@@ -189,6 +206,23 @@ class PersistentServerTests(unittest.TestCase):
         return self.request('POST', '/api/runs/' + run['run_id'] + '/review',
                             json.dumps(payload, ensure_ascii=False).encode('utf-8'),
                             {'Content-Type': 'application/json', 'X-CSRF-Token': self.token()})
+
+    def test_execution_journal_http_reports_completed_and_failed(self):
+        status, _, body = self.post()
+        self.assertEqual(status, 200)
+        run = json.loads(body)
+        with patch('rehearsal.server.execute_run', side_effect=RuntimeError('synthetic failure')):
+            self.assertEqual(self.post()[0], 500)
+        status, _, body = self.request(path='/api/executions')
+        self.assertEqual(status, 200)
+        journal = json.loads(body)
+        self.assertFalse(journal['automatic_retry'])
+        self.assertEqual([x['state'] for x in journal['executions']], ['FAILED', 'COMPLETED'])
+        self.assertEqual(journal['executions'][1]['run_id'], run['run_id'])
+        self.assertTrue(journal['executions'][1]['stages'])
+        self.assertTrue(all(s['state'] == 'COMPLETED' for s in journal['executions'][1]['stages']))
+        self.assertFalse(journal['executions'][1]['confirmation_required'])
+        self.assertEqual(self.request(path='/api/executions', headers={'Origin':'https://evil.example'})[0], 403)
 
     def test_saved_report_and_review_preserve_partial_scope(self):
         status, _, body = self.post(json.dumps({'faq_version': 'corrected', 'api_version': 'corrected', 'case_ids': ['S01']}))
@@ -231,6 +265,34 @@ class PersistentServerTests(unittest.TestCase):
             self.assertNotIn(b'private', body); self.assertNotIn(b'Traceback', body)
 
 
+    def test_idempotent_http_retry_and_conflict(self):
+        key={'Idempotency-Key':'http-retry'}
+        first=self.post(**key)
+        second=self.post(**key)
+        self.assertEqual(first[0],200); self.assertEqual(second[0],200)
+        self.assertEqual(json.loads(first[2]),json.loads(second[2]))
+        status,_,body=self.post(json.dumps({'faq_version':'stale','api_version':'corrected'}),**key)
+        self.assertEqual(status,409)
+        self.assertEqual(json.loads(body)['error']['code'],'EXECUTION_CONFLICT')
+        self.assertEqual(len(self.server.store.list_attempts()),1)
+        self.assertEqual(self.post(**{'Idempotency-Key':'bad key'})[0],400)
+
+
+    def test_workspace_scope_is_stable_and_separate(self):
+        from rehearsal.server import make_server
+        from pathlib import Path
+        scope=json.loads(self.request()[2])['storage']['request_scope']
+        self.assertRegex(scope,r'^[a-f0-9]{64}$')
+        same=make_server(0,workspace=self.directory.name)
+        other=make_server(0,workspace=Path(self.directory.name)/'next')
+        try:
+            self.assertEqual(same.request_scope,scope)
+            self.assertNotEqual(other.request_scope,scope)
+            self.assertNotIn(self.directory.name,json.dumps(json.loads(self.request()[2])))
+        finally:
+            same.server_close();other.server_close()
+
+
 class EphemeralHistoryTests(unittest.TestCase):
     setUpClass = classmethod(ServerTests.setUpClass.__func__)
     tearDownClass = classmethod(ServerTests.tearDownClass.__func__)
@@ -244,3 +306,6 @@ class EphemeralHistoryTests(unittest.TestCase):
         self.assertEqual(self.request(path='/api/runs')[0], 503)
         self.assertEqual(self.request('POST', '/api/runs/' + 'a'*32 + '/review', '{}',
                                      {'Content-Type': 'application/json', 'X-CSRF-Token': self.token()})[0], 503)
+
+    def test_key_requires_durable_workspace(self):
+        self.assertEqual(self.post(**{'Idempotency-Key':'retry'})[0],409)

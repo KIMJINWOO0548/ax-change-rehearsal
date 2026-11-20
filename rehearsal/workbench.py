@@ -13,8 +13,10 @@ import re
 from collections import Counter
 from pathlib import Path
 
-from .adapters import digest
+from .adapters import CustomerServiceAdapter, digest
+from .crosscheck import compare_case_paths
 from .engine import load_packs, run_pack
+from .validation import require
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -86,25 +88,40 @@ def evaluate_faq(faq: dict, pack: dict) -> dict:
             'cases': rows, 'counts': dict(Counter(c['business_verdict'] for c in rows))}
 
 
-def build_workbench(stale_faq: dict | None = None, corrected_faq: dict | None = None) -> dict:
-    pack = load_packs(['customer_service'])[0]
-    stale_faq = copy.deepcopy(stale_faq if stale_faq is not None else load_faq(ROOT / 'examples/customer_service/faq_stale.json'))
-    corrected_faq = copy.deepcopy(corrected_faq if corrected_faq is not None else load_faq(ROOT / 'examples/customer_service/faq_corrected.json'))
+def build_workbench(stale_faq: dict | None = None, corrected_faq: dict | None = None, *, policy_version=None) -> dict:
+    from .policies import get_policy
+    registered = get_policy(policy_version) if policy_version is not None else None
+    pack = registered.load_pack() if registered else load_packs(['customer_service'])[0]
+    faq_root = ROOT / (registered.faq_root if registered else 'examples/customer_service')
+    registered_ids = [case['id'] for case in pack['cases']]
+    stale_faq = copy.deepcopy(stale_faq if stale_faq is not None else load_faq(faq_root / 'faq_stale.json'))
+    corrected_faq = copy.deepcopy(corrected_faq if corrected_faq is not None else load_faq(faq_root / 'faq_corrected.json'))
     sources = {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
-               for name in ('rehearsal/workbench.py', 'rehearsal/report.py', 'run_workbench.py')}
+               for name in ('rehearsal/workbench.py', 'rehearsal/report.py', 'rehearsal/crosscheck.py', 'run_workbench.py')}
     stages = []
     for title, config, variant in (
         ('1. FAQ와 API 모두 이전 기준', stale_faq, 'stale_candidate'),
         ('2. FAQ 수정 · API는 이전 기준', corrected_faq, 'stale_candidate'),
         ('3. FAQ와 API 수정 후 재실행', corrected_faq, 'normal'),
     ):
-        api = run_pack(pack, variant)
+        api = run_pack(pack, variant, policy_version=policy_version) if registered else run_pack(pack, variant)
         faq = evaluate_faq(config, pack)
+        # zip would silently omit missing results or pair different cases.
+        # Reject incomplete/unknown evaluator output before deriving readiness.
+        for result in (api, faq):
+            require(type(result) is dict and type(result.get('cases')) is list
+                    and all(type(case) is dict
+                            and type(case.get('business_verdict')) is str
+                            and case.get('business_verdict') in {'PASS_WITHIN_SCOPE', 'FAIL', 'INCONCLUSIVE'}
+                            for case in result['cases'])
+                    and [case.get('id') for case in result['cases']] == registered_ids,
+                    'Execution results do not match the registered scope.')
         cases = []
         for api_case, faq_case in zip(api['cases'], faq['cases']):
             verdicts = (api_case['business_verdict'], faq_case['business_verdict'])
             verdict = 'FAIL' if 'FAIL' in verdicts else ('INCONCLUSIVE' if 'INCONCLUSIVE' in verdicts else 'PASS_WITHIN_SCOPE')
-            cases.append({'id': api_case['id'], 'business_verdict': verdict})
+            cases.append({'id': api_case['id'], 'business_verdict': verdict,
+                          'crosscheck': compare_case_paths(faq_case, api_case)})
         counts = dict(Counter(c['business_verdict'] for c in cases))
         readiness = 'BLOCKED' if counts.get('FAIL') else ('REVIEW_REQUIRED' if counts.get('INCONCLUSIVE') else 'PASS_WITHIN_REGISTERED_SCOPE')
         stages.append({'title': title, 'api': api, 'faq': faq, 'cases': cases, 'counts': counts,
@@ -113,8 +130,9 @@ def build_workbench(stale_faq: dict | None = None, corrected_faq: dict | None = 
                       'text': (ROOT / 'fixtures/customer_service' / relative).read_text('utf-8'),
                       'sha256': hashlib.sha256((ROOT / 'fixtures/customer_service' / relative).read_bytes()).hexdigest()}
                 for side, relative in pack['source_documents'].items()}
+    policy = (registered.adapter() if registered else CustomerServiceAdapter()).policy
     return {'synthetic_only': True, 'llm_executed': False, 'real_system_connected': False,
-            'title': '반품 정책 변경 리허설 · 14일 → 30일', 'evidence': evidence,
+            'title': f"반품 정책 변경 리허설 · {policy['baseline_threshold']}일 → {policy['candidate_threshold']}일", 'evidence': evidence,
             'workbench_sources': sources,
             'oracle_provenance': pack['provenance'], 'expert_reviewed': pack['expert_reviewed'],
             'stages': stages, 'unknowns': [

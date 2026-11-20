@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "cases": {
+    "S01": {"baseline": {"REVIEWER": 0, "CUSTOMER": 0}, "candidate": {"REVIEWER": 0, "CUSTOMER": 0}},
+    "S02": {"baseline": {"REVIEWER": 1, "CUSTOMER": 0}, "candidate": {"REVIEWER": 1, "CUSTOMER": 0}},
+    "S03": {"baseline": {"REVIEWER": 0, "CUSTOMER": 0}, "candidate": {"REVIEWER": 1, "CUSTOMER": 0}},
+    "S04": {"baseline": {"REVIEWER": 0, "CUSTOMER": 0}, "candidate": {"REVIEWER": 1, "CUSTOMER": 0}},
+    "S05": {"baseline": {"REVIEWER": 0, "CUSTOMER": 0}, "candidate": {"REVIEWER": 0, "CUSTOMER": 0}},
+    "S06": {"baseline": {"REVIEWER": 0, "CUSTOMER": 0}, "candidate": {"REVIEWER": 1, "CUSTOMER": 0}},
+    "S07": {"baseline": {"REVIEWER": 0, "CUSTOMER": 0}, "candidate": {"REVIEWER": 0, "CUSTOMER": 0}},
+    "S08": {"baseline": {"REVIEWER": 0, "CUSTOMER": 0}, "candidate": {"REVIEWER": 0, "CUSTOMER": 0}}
+  }
+}

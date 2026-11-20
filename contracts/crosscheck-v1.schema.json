@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AX synthetic case crosscheck v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "state",
+    "changed_fields",
+    "faq",
+    "api"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "state": {
+      "enum": [
+        "ALIGNED",
+        "DIVERGENT",
+        "CONTEXT_MISMATCH",
+        "UNOBSERVED"
+      ]
+    },
+    "changed_fields": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "order_id",
+          "region",
+          "delivered_on",
+          "elapsed_days",
+          "opened",
+          "custom_made"
+        ]
+      }
+    },
+    "faq": {
+      "$ref": "#/$defs/path"
+    },
+    "api": {
+      "$ref": "#/$defs/path"
+    }
+  },
+  "$defs": {
+    "path": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "context_sha256",
+        "decision"
+      ],
+      "properties": {
+        "context_sha256": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decision": {
+          "enum": [
+            null,
+            "ELIGIBLE",
+            "INELIGIBLE",
+            "NEEDS_INPUT",
+            "INVALID_INPUT",
+            "UNSUPPORTED"
+          ]
+        }
+      }
+    }
+  }
+}

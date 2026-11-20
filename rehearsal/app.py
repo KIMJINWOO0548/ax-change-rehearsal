@@ -8,7 +8,8 @@ import uuid
 from collections import Counter
 
 from . import assert_sources_unchanged
-from .adapters import ADAPTERS, digest
+from .adapters import ADAPTERS, POLICY_FILES, digest
+from .crosscheck import VERSION as CROSSCHECK_VERSION, compare_case_paths
 from .engine import ROOT, check_observation, load_packs, run_pack
 from .validation import load_json, require
 from .workbench import evaluate_faq
@@ -26,7 +27,7 @@ LIMITS = [
     '합성 규정과 시나리오만 사용합니다. 실제 고객·기업 시스템과 연결되지 않습니다.',
     'FAQ와 API는 별도의 결정적 모의 구현입니다. LLM이나 문서 의미 자동 추출을 실행하지 않습니다.',
     '문서 근거 위치는 등록된 합성 정책에 수동 연결했습니다. 임의 규정의 해석을 보장하지 않습니다.',
-    '미확인 3개를 통과로 바꾸지 않습니다. 이 결과는 실제 배포 승인이나 현업 정확도가 아닙니다.',
+    '미확인 결과는 통과에 포함하지 않습니다. 실제 배포 승인이나 현업 정확도를 보장하지 않습니다.',
     '기본은 메모리 실행입니다. --workspace로 켠 로컬 기록만 보존되며, 검토 표식은 인증이나 배포 승인이 아닙니다.',
 ]
 
@@ -47,18 +48,25 @@ def _policy(pack: dict) -> dict:
     return result
 
 
-def build_context() -> dict:
-    pack = load_packs(['customer_service'])[0]
+def build_context(policy_version=None) -> dict:
+    from .policies import VERSIONS, get_policy
+    default = get_policy(policy_version) if policy_version is not None else VERSIONS['returns-20261201']
+    pack = default.load_pack() if policy_version is not None else load_packs(['customer_service'])[0]
     policy = _policy(pack)
+    reviewed_hashes = default.policy_hashes() if policy_version is not None else REVIEWED_POLICY_HASHES
     return {
-        'policy_review_valid': all(policy[side]['sha256'] == sha for side, sha in REVIEWED_POLICY_HASHES.items()),
+        'policy_version': policy_version,
+        'policy_change_line': 5 if policy_version == 'returns-20270115' else 7,
+        'available_policy_versions': [{'id': p.identifier, 'effective_date': p.effective_date,
+                                       'synthetic_only': True} for p in VERSIONS.values()],
+        'policy_review_valid': all(policy[side]['sha256'] == sha for side, sha in reviewed_hashes.items()),
         'project': {'name': 'AX Change Rehearsal', 'synthetic_only': True,
                     'policy_title': pack['title'], 'effective_date': pack['effective_date'],
                     'scenario_count': len(pack['cases'])},
         'policy': policy,
-        'change': {'old_window_days': 14, 'new_window_days': 30,
+        'change': {'old_window_days': default.old_window_days, 'new_window_days': default.new_window_days,
                    'effective_date': pack['effective_date'],
-                   'preserved': ['이전 배송 건은 14일 유지', '개봉·주문제작 제외',
+                   'preserved': [f'이전 배송 건은 {default.old_window_days}일 유지', '개봉·주문제작 제외',
                                  '한국 주문만 지원', '미확인 입력은 보류']},
         'cases': [{key: case[key] for key in ('id', 'label', 'intended_behavior', 'tags')}
                   for case in pack['cases']],
@@ -70,10 +78,13 @@ def build_context() -> dict:
 def _validate_configuration(configuration):
     versions = {'faq_version', 'api_version'}
     require(type(configuration) is dict and versions <= set(configuration)
-            and set(configuration) <= versions | {'case_ids'},
-            'faq_version과 api_version을 지정하고 선택적으로 case_ids만 추가할 수 있습니다.')
+            and set(configuration) <= versions | {'case_ids', 'policy_version'},
+            'faq_version과 api_version을 지정하고 선택적으로 case_ids와 policy_version을 추가할 수 있습니다.')
     require(all(type(configuration[key]) is str and configuration[key] in {'stale', 'corrected'}
                 for key in versions), '버전은 stale 또는 corrected여야 합니다.')
+    if 'policy_version' in configuration:
+        from .policies import get_policy
+        get_policy(configuration['policy_version'])
     if 'case_ids' in configuration:
         selected = configuration['case_ids']
         require(type(selected) is list and 1 <= len(selected) <= 12,
@@ -146,6 +157,7 @@ def _input_fingerprint():
     names = ('fixtures/customer_service/pack.json',
              'fixtures/customer_service/policy_before.md',
              'fixtures/customer_service/policy_after.md',
+             POLICY_FILES['returns-20261201'][0],
              'examples/customer_service/faq_stale.json',
              'examples/customer_service/faq_corrected.json')
     return {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in names}
@@ -154,9 +166,11 @@ def _input_fingerprint():
 def execute_run(configuration: dict) -> dict:
     assert_sources_unchanged()
     _validate_configuration(configuration)
-    input_fingerprint = _input_fingerprint()
+    from .policies import get_policy
+    selected_policy = get_policy(configuration['policy_version']) if 'policy_version' in configuration else None
+    input_fingerprint = selected_policy.fingerprints() if selected_policy else _input_fingerprint()
     configuration = copy.deepcopy(configuration)
-    pack = load_packs(['customer_service'])[0]
+    pack = selected_policy.load_pack() if selected_policy else load_packs(['customer_service'])[0]
     registered_pack_sha256 = digest(pack)
     registered_ids = [case['id'] for case in pack['cases']]
     requested_ids = configuration.get('case_ids', registered_ids)
@@ -172,24 +186,27 @@ def execute_run(configuration: dict) -> dict:
     pack = copy.deepcopy(pack)
     pack['cases'] = [case for case in pack['cases'] if case['id'] in selected_ids]
     policy = _policy(pack)
-    require(all(policy[side]['sha256'] == sha for side, sha in REVIEWED_POLICY_HASHES.items()),
+    reviewed_hashes = selected_policy.policy_hashes() if selected_policy else REVIEWED_POLICY_HASHES
+    require(all(policy[side]['sha256'] == sha for side, sha in reviewed_hashes.items()),
             '정책 문서가 바뀌었습니다. 근거와 독립 시나리오를 다시 검토해야 합니다.')
     variant = 'normal' if configuration['api_version'] == 'corrected' else 'stale_candidate'
-    api = run_pack(pack, variant)
+    api = run_pack(pack, variant, policy_version=selected_policy.identifier) if selected_policy else run_pack(pack, variant)
     api['scope'] = copy.deepcopy(scope)
     api['readiness'] = _readiness(api['counts'], scope['complete'])
-    faq_path = ROOT / 'examples/customer_service' / ('faq_' + configuration['faq_version'] + '.json')
+    faq_path = ROOT / (selected_policy.faq_root if selected_policy else 'examples/customer_service') / ('faq_' + configuration['faq_version'] + '.json')
     faq_config = load_json(faq_path)
     faq = evaluate_faq(faq_config, pack)
     require([case['id'] for case in api['cases']] == selected_ids
             and [case['id'] for case in faq['cases']] == selected_ids,
             '실행 결과의 사례 목록이 선택한 범위와 일치하지 않습니다.')
-    adapter = ADAPTERS[pack['pack_id']]()
+    adapter = selected_policy.adapter() if selected_policy else ADAPTERS[pack['pack_id']]()
     cases = []
-    # These source references are manually registered, not semantic extraction.
+    evidence_lines = adapter.policy['evidence_after_lines']
+    require(all(type(n) is int and 1 <= n <= len(policy['after']['lines']) for n in evidence_lines),
+            '등록된 정책 근거의 줄 번호를 확인하세요.')
     evidence = [{'path': policy['after']['path'], 'line': n,
                  'quote': policy['after']['lines'][n - 1]['text'],
-                 'sha256': policy['after']['sha256']} for n in (5, 7)]
+                 'sha256': policy['after']['sha256']} for n in evidence_lines]
     for a, f in zip(api['cases'], faq['cases']):
         verdicts = (a['business_verdict'], f['business_verdict'])
         verdict = 'FAIL' if 'FAIL' in verdicts else ('INCONCLUSIVE' if 'INCONCLUSIVE' in verdicts else 'PASS_WITHIN_SCOPE')
@@ -213,6 +230,7 @@ def execute_run(configuration: dict) -> dict:
                       'intended_behavior': a['intended_behavior'], 'business_verdict': verdict,
                       'assertion_status': assertion, 'faq': f, 'baseline': a['baseline'],
                       'candidate': a['candidate'], 'evidence': copy.deepcopy(evidence), 'reason': reason,
+                      'crosscheck': compare_case_paths(f, a),
                       'decision_summary': {'expected': _decision_summary(a['candidate']['expected']),
                                            'faq': _decision_summary(f['response']),
                                            'baseline_api': _decision_summary(a['baseline']['response']),
@@ -221,14 +239,17 @@ def execute_run(configuration: dict) -> dict:
     counts = dict(Counter(c['business_verdict'] for c in cases))
     readiness = _readiness(counts, scope['complete'])
     sources = {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
-               for name in ('rehearsal/app.py', 'rehearsal/workbench.py')}
+               for name in ('rehearsal/app.py', 'rehearsal/workbench.py', 'rehearsal/crosscheck.py')}
     manifest = {'configuration': copy.deepcopy(configuration), 'api_manifest': api['manifest'],
                 'scope': copy.deepcopy(scope), 'registered_pack_sha256': registered_pack_sha256,
                 'faq_sha256': faq['sha256'], 'faq_artifact_sha256': digest(faq_config),
                 'faq_review': faq['review'], 'policy_sha256': {s: p['sha256'] for s, p in policy.items()},
-                'service_sources': sources}
+                'service_sources': sources, 'crosscheck_version': CROSSCHECK_VERSION}
+    if 'effect_evidence_version' in api['manifest']:
+        for key in ('effect_evidence_version', 'effect_expectations_sha256'):
+            manifest[key] = api['manifest'][key]
     assert_sources_unchanged()
-    require(input_fingerprint == _input_fingerprint(),
+    require(input_fingerprint == (selected_policy.fingerprints() if selected_policy else _input_fingerprint()),
             'Execution inputs changed; restart and review before running.')
     return {'run_id': uuid.uuid4().hex, 'created_at': dt.datetime.now(dt.timezone.utc).isoformat(),
             'configuration': configuration, 'manifest_sha256': digest(manifest), 'manifest': manifest,

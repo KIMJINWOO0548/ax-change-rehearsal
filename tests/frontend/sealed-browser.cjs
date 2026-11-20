@@ -37,6 +37,11 @@ function sealedCommand(operation){
  assert.equal(result.status,0,result.stderr);return JSON.parse(result.stdout);
 }
 async function archiveStatus(page,text){await page.waitForFunction(text=>document.getElementById('archive-status').textContent.includes(text),text);}
+async function revealStoredEvidence(page){
+ await page.waitForFunction(()=>!document.getElementById('archive-detail').hidden&&document.getElementById('archive-detail').getAttribute('aria-busy')==='false');
+ if(await page.locator('.archive-identifiers').getAttribute('open')===null)await page.locator('.archive-identifiers > summary').click();
+ for(const details of await page.locator('#archive-events details').all())if(await details.getAttribute('open')===null)await details.locator('summary').click();
+}
 (async()=>{
  try{
   fs.mkdirSync(output,{recursive:true});
@@ -47,10 +52,10 @@ async function archiveStatus(page,text){await page.waitForFunction(text=>documen
   await page.locator('#select-boundary').click();await page.locator('#run').click();
   await page.waitForFunction(()=>document.getElementById('run-status').textContent.startsWith('실행 완료'));
   await archiveStatus(page,'저장된 합성 실행 1개');
-  await page.locator('#archive-list button').first().click();await archiveStatus(page,'과거 저장 근거');
+  await page.locator('#archive-list button').first().click();await archiveStatus(page,'과거 저장 근거');await revealStoredEvidence(page);
   await page.locator('#archive-review-status').selectOption('CHANGES_REQUESTED');
   await page.locator('#archive-note').fill('Synthetic recovery drill: preserve scope and review history.');
-  await page.locator('#archive-save').click();await archiveStatus(page,'로컬 검토 메모를 저장했습니다');
+  await page.locator('#archive-save').click();await archiveStatus(page,'로컬 검토 메모를 저장했습니다');await revealStoredEvidence(page);
   const meta=await page.locator('#archive-meta').innerText(),events=await page.locator('#archive-events').innerText();
   // Online snapshot while source server remains available. Restore never touches it.
   const created=command(['backup','--workspace',source,'--destination',backup]);
@@ -65,10 +70,10 @@ async function archiveStatus(page,text){await page.waitForFunction(text=>documen
   assert.equal(created.authenticated,false);assert.equal(created.encrypted,false);
   assert.equal(recovered.signer_authenticated,false);
   await page.reload();await page.locator('#archive-list button').first().waitFor();
-  await page.locator('#archive-list button').first().click();await archiveStatus(page,'과거 저장 근거');
+  await page.locator('#archive-list button').first().click();await archiveStatus(page,'과거 저장 근거');await revealStoredEvidence(page);
   assert.equal(await page.locator('#archive-meta').innerText(),meta,'Source remains unchanged');
   await stop();url=await start(restored);await page.goto(url);await page.locator('#run:enabled').waitFor();
-  await page.locator('#archive-list button').first().waitFor();await page.locator('#archive-list button').first().click();await archiveStatus(page,'과거 저장 근거');
+  await page.locator('#archive-list button').first().waitFor();await page.locator('#archive-list button').first().click();await archiveStatus(page,'과거 저장 근거');await revealStoredEvidence(page);
   assert.equal(await page.locator('#archive-meta').innerText(),meta);
   assert.equal(await page.locator('#archive-events').innerText(),events);
   assert.equal(await page.locator('#case-rows tr').count(),0,'Historical recovery must not become a current run');

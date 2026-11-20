@@ -1,5 +1,57 @@
 # 데이터·실행·판정 계약 v1
 
+## Versioned synthetic notification observations
+
+Only the `returns-20270115` policy uses [notification evidence v1](mock-effects-v1.schema.json).
+Its adapter reads a hash-pinned mock behavior artifact independently of the
+hash-pinned role/count expectations used by the evaluator. No address, real
+recipient or connector is part of the data or runtime.
+
+Each side records initial, first-call and replay observations alongside the
+existing independent receipt observations. An observed empty list proves zero
+within that observation. A failed or unreached observation keeps rows and any
+unavailable counts null. The evaluator recomputes counts and compares row
+identity across replay. The evidence ledger retains its existing steps: a
+completed read checkpoint includes the receipt rows and observed intent data.
+Old saved reports can still be read without intent evidence.
+
+## Durable synthetic operation checkpoints
+
+Persisted workbench runs append STARTED and COMPLETED/FAILED checkpoints for each
+baseline/candidate initial observation, invocation, observation, and existing
+idempotency-test invocation/observation. Completion records contain the returned
+synthetic response or independent snapshot; failures retain the exception type.
+STARTED is committed before the operation and never means the operation succeeded.
+A crash between execution and checkpoint commit remains STARTED/unknown.
+These records are exposed by `/api/executions` and `manage_evidence.py executions`
+as `stages`, with `confirmation_required` for unfinished/failed attempts or stages.
+
+Synthetic adapter thresholds, effective dates, scope and evidence line references
+come from the registered `fixtures/**/mock_policy.json` artifacts. They are
+hash-pinned and recorded in the execution manifest. The independently authored
+`pack.json` still supplies cases and expectations to the evaluator, never to the
+adapter. Artifact drift stops execution rather than silently changing rules.
+COMPLETED means a stage returned, not that business assertions passed. Attempt
+COMPLETED means a report was saved atomically, not business success or approval.
+Old histories without checkpoints are preserved without inventing stage evidence.
+Backup/restore retains checkpoints; reopening never resumes or retries work.
+Checkpoint starts reserve their finish row plus existing attempt terminal rows.
+Payload/database/ledger limits still apply. A failed checkpoint write stops the
+runner; the committed prefix requires inspection. This is local synthetic evidence,
+not external effect proof, authentication, or restoration of in-memory mock state.
+
+## 2026-11-09 오프라인 통합·재현 무결성 보완
+
+오프라인 작업대도 API·FAQ 실행 결과가 등록된 사례 ID·개수·순서와 정확히
+같아야 보고서를 만든다. 빈/누락/중복/잘못된 결과와 알 수 없는 업무 판정은
+집계 전에 거부하며 제외된 결과를 통과로 간주하지 않는다.
+
+합성 replay는 canonical JSON의 숫자 표현·불리언과 필드 존재 여부를 구분한다.
+키 순서 차이는 허용하지만 타입 또는 증거가 바뀐 결과를 MATCH로 표시하지
+않는다. MATCH는 같은 부분 범위·미확인 결과도 재현할 수 있다는 뜻이며
+readiness·배포 승인으로 승격하지 않는다. 기존 저장 schema는 변경하지 않는다.
+실제 검증과 미검증은 [보완 기록](../docs/COMPLETION_INTEGRITY_2026-11-09.md)에 있다.
+
 이 문서와 동봉 JSON 스키마는 초기 구현의 계약이다. 업종 팩의 업무 판정은 패키지에 들어 있는 규정과 독립 작성한 시나리오 정답을 사용한다. 초기 메모리 기반 모의 어댑터는 구현했다. 이 문서의 영속 데이터·권한·승인·API 전체가 구현된 것은 아니며 HANDOFF.md로 범위를 확인한다.
 
 ## 1. 객체와 불변 조건
@@ -225,6 +277,10 @@ manifest는 정규화한 설정·scope·전체 등록 팩의 `registered_pack_sh
 
 `checks`는 true/false/null이다. 실제 관찰이 없거나 비교할 신규 행이 없어 해당 행 검사가 적용되지 않으면 null이다. 쓰기가 없어야 하는 사례의 관찰 건수 0과 재호출 불변이 확인되면 행 관련 check가 null이어도 정상일 수 있다. null을 통과·0·false로 치환하지 않는다. `errors`는 근거에서 확인된 불일치이며, 호출·관찰 실패 세부 정보는 원래 `candidate.invocation_error`, `candidate.observation_error`에 남는다.
 
+### FAQ·API 교차 판단
+
+`manifest.crosscheck_version=1`인 보고서는 사례마다 `crosscheck`를 저장한다. FAQ와 후보 API가 각자 기록한 업무 입력으로 비교하며 미관찰, 조건 불일치, 같은 조건의 판단 일치·불일치를 구분한다. 같은 오답이라도 독립 기대값의 실패가 유지된다. 저장과 읽기에서 교차 결과를 원래 경로 자료와 다시 대조한다. 과거 보고서는 이 필드 없이도 읽힌다. [교차 응답 스키마](crosscheck-v1.schema.json)
+
 
 ## 선택적 로컬 증거 저장 · 0.5.0
 
@@ -259,3 +315,33 @@ Header는 big-endian `8s B 16s 12s Q`: magic AXSEALED, version1, salt16, nonce12
 seal은 source bundle 검증과 실제 read checksum을 확인하고 새 ciphertext 파일만 만든다. inspect는 AEAD와 정확한 형식/manifest/DB checksum만 확인하며 AUTHENTICATED_ENVELOPE 및 database_verified:false다. native in-memory SQLite deserialize는 쓰지 않는다. restore는 인증 후 새 private incomplete 폴더에 원문을 쓰고 기존 파일 기반 schema/ledger 검증을 마친 경우에만 RESTORED_DATABASE_VERIFIED, database_verified:true다. 기존 대상은 덮어쓰지 않는다.
 
 잘못된 비밀번호·태그·checksum은 평문 출력 생성 전에 실패한다. 인증 후 내부DB검사/쓰기 실패는 새 평문 일부와 incomplete 표식이 남을 수 있으며 작업대는 이를 거부한다. 원본·기존평문·복원공간·메모리의 암호화나 안전삭제를 보장하지 않는다. AEAD는 비밀번호 보유자에 대한 byte무결성이지 작성자신원/서명/최신성/조직승인이 아니다.
+
+## Registered synthetic policy selection
+
+The local execution configuration accepts optional `policy_version`, exactly
+`returns-20261201` or `returns-20270115`. Omitting it preserves the existing
+customer-service demo configuration and does not rewrite saved configurations.
+`/api/context` lists available IDs with synthetic-only flags; the current UI
+continues to default to the original scenario. No new UI has been auto-applied.
+
+The second scenario is independently authored synthetic policy, not a subsequent
+legal revision or an assertion about a company: 14 to 21 days effective
+2027-01-15 versus the original 14 to 30 days effective 2026-12-01. Eight explicit
+fixture cases cover before/on/after the date, inclusive threshold and exclusions.
+Expected outputs are stored fixtures, not generated by the adapter being tested.
+
+Identifiers select fixed code-reviewed artifacts. The registry is immutable in
+normal Python use and pins canonical UTF-8/LF digests for pack, documents and FAQ.
+An arbitrary path, unknown version, changed fixture, mismatched pack or oracle
+is rejected. There is no dynamic import, remote fetch or client-written registry.
+The adapter receives only the registered rules and business inputs, not oracles.
+The selected version, artifacts and registry source hash are in the API manifest
+and therefore the report manifest. Source/fixture drift during a run fails closed.
+
+Ledger schema and existing rows are not migrated. Configured versions participate
+in existing request-key equality: changing version under a used key conflicts;
+incomplete execution does not resume or retry. Reopen/backup retain old reports.
+A deterministic replay with changed source hashes is INCOMPATIBLE, never silently
+upgraded to MATCH. A supported same-source/version report replays normally.
+This is not immutable storage against a local owner, authenticated policy review,
+enterprise validation, semantic document extraction or a production policy engine.

@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "effective_date": "2027-01-15",
+  "region": "KR",
+  "baseline_threshold": 14,
+  "candidate_threshold": 21,
+  "exclude_if_true": ["opened", "custom_made"],
+  "evidence_after_lines": [5, 7]
+}

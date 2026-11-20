@@ -14,20 +14,21 @@ class Node {
  click(){return this.handlers.click?.({preventDefault(){}});}
 }
 const descendants=node=>node.children.flatMap(n=>[n,...descendants(n)]);
-function setup({invalidPolicy=false}={}){
+function memoryStorage(){const data=new Map();return {getItem:k=>data.get(k)??null,setItem:(k,v)=>data.set(k,v),removeItem:k=>data.delete(k)};}
+function setup({invalidPolicy=false,persistent=false,session=memoryStorage(),scope='a'.repeat(64)}={}){
  const ids={},html=fs.readFileSync('web/index.html','utf8');
  for(const m of html.matchAll(/<([a-z][a-z0-9]*)\b[^>]*id="([^"]+)"/g))ids[m[2]]=new Node(m[1]);
  const radios=['faq_version','api_version'].flatMap(name=>['stale','corrected'].map(value=>Object.assign(new Node('input'),{name,value,checked:value==='stale'})));
  const links=Array.from({length:4},()=>new Node('a'));
  const policy={path:'policy.md',sha256:'hash',lines:[{number:7,text:'return rule'}]};
  const cases=[{id:'S01',label:'Case <script>',intended_behavior:'CHANGE',tags:['boundary']},{id:'S02',label:'Missing input',intended_behavior:'INDETERMINATE',tags:['missing']}];
- const context={csrf_token:'test-token',policy_review_valid:!invalidPolicy,policy:{before:policy,after:policy},defaults:{faq_version:'stale',api_version:'stale'},project:{scenario_count:2},cases,change:{old_window_days:14,new_window_days:30,effective_date:'2026-12-01',preserved:[]},limits:[]};
+ const context={storage:{enabled:persistent,request_scope:scope},csrf_token:'test-token',policy_review_valid:!invalidPolicy,policy:{before:policy,after:policy},defaults:{faq_version:'stale',api_version:'stale'},project:{scenario_count:2},cases,change:{old_window_days:14,new_window_days:30,effective_date:'2026-12-01',preserved:[]},limits:[]};
  const calls=[];let next=null,counter=0;
  const document={getElementById:id=>ids[id],createElement:tag=>new Node(tag),body:new Node('body'),
   querySelectorAll(selector){if(selector.includes('.rail'))return links;if(selector==='#case-rows button')return descendants(ids['case-rows']).filter(n=>n.tag==='button');if(selector.includes('input'))return radios.filter(r=>selector.includes(r.name));return[];},
   querySelector(selector){if(selector.includes('.rail'))return links[0];return radios.find(r=>r.checked&&selector.includes(r.name));}};
- const fetch=async(path,options)=>{calls.push({path,options});return path==='/api/context'?{ok:true,json:async()=>context}:next();};
- const sandbox={document,fetch,console,AbortController,setTimeout,clearTimeout,Blob,URL,Set,Map,Option:class extends Node{constructor(text,value){super('option');this.textContent=text;this.value=value;}}};
+ const fetch=async(path,options)=>{calls.push({path,options});return path.startsWith('/api/context')?{ok:true,json:async()=>context}:next();};
+ const sandbox={sessionStorage:session,crypto:require('node:crypto').webcrypto,document,fetch,console,AbortController,setTimeout,clearTimeout,Blob,URL,Set,Map,Option:class extends Node{constructor(text,value){super('option');this.textContent=text;this.value=value;}}};
  vm.createContext(sandbox);vm.runInContext(fs.readFileSync('web/review.js','utf8'),sandbox);vm.runInContext(source,sandbox);
  const settle=()=>new Promise(resolve=>setImmediate(resolve));
  const result=()=>{
@@ -43,7 +44,7 @@ function setup({invalidPolicy=false}={}){
     scope:{registered_total:2,selected_total:chosen.length,selected_case_ids:config.case_ids,omitted_case_ids:cases.filter(c=>!config.case_ids.includes(c.id)).map(c=>c.id),complete:chosen.length===2},
     readiness:counts.FAIL?'BLOCKED':'REVIEW_REQUIRED',counts,total:chosen.length,limits:[],cases:rows};
  };
- return {ids,calls,settle,result,run:()=>ids['run-form'].handlers.submit({preventDefault(){}}),setNext:fn=>{next=fn;},good:()=>({ok:true,json:async()=>result()}),
+ return {ids,calls,settle,result,context,run:()=>ids['run-form'].handlers.submit({preventDefault(){}}),setNext:fn=>{next=fn;},good:()=>({ok:true,json:async()=>result()}),
    change(name,value){radios.filter(r=>r.name===name).forEach(r=>r.checked=r.value===value);ids['run-form'].handlers.change();}};
 }
 test('request headers, selected scope, duplicate guard, invalidation, failure and retry',async()=>{
@@ -60,7 +61,7 @@ test('request headers, selected scope, duplicate guard, invalidation, failure an
 test('discard changed-revision response and stop busy state',async()=>{
  const s=setup();await s.settle();let resolve;s.setNext(()=>new Promise(r=>resolve=r));const pending=s.run();s.change('api_version','corrected');resolve(s.good());await pending;
  assert.equal(s.ids.download.disabled,true);assert.equal(s.ids['case-rows'].children.length,0);assert.equal(s.ids.run.disabled,false);
- assert.match(s.ids['run-status'].textContent,/응답을 사용하지/);
+ assert.match(s.ids['run-status'].textContent,/응답을 화면에 적용하지 않았습니다/);
 });
 test('changed policy blocks requests',async()=>{
  const s=setup({invalidPolicy:true});await s.settle();assert.equal(s.ids.run.disabled,true);assert.match(s.ids['run-status'].textContent,/정책 문서/);await s.run();assert.equal(s.calls.length,1);
@@ -79,7 +80,7 @@ test('search changes visible rows without silently changing selection',async()=>
 test('mismatched result scope and counts fail closed',async()=>{
  for(const mutate of [r=>r.scope.complete=false,r=>r.counts.FAIL=99,r=>r.cases.pop(),r=>r.readiness='PASS_WITHIN_REGISTERED_SCOPE']){
   const s=setup();await s.settle();s.setNext(async()=>({ok:true,json:async()=>{const r=s.result();mutate(r);return r;}}));await s.run();
-  assert.equal(s.ids.download.disabled,true);assert.match(s.ids['run-status'].textContent,/실행하지 못/);
+  assert.equal(s.ids.download.disabled,true);assert.match(s.ids['run-status'].textContent,/실행 완료 여부를 확인하지 못했습니다/);
  }
 });
 test('failure-only rerun is explicit selection and differing scopes cannot compare',async()=>{
@@ -102,5 +103,99 @@ test('no dynamic HTML or external dependencies in shipped UI',()=>{
 test('missing omitted cases cannot conceal unexecuted scope',async()=>{
  const s=setup();await s.settle();s.ids['select-boundary'].click();
  s.setNext(async()=>({ok:true,json:async()=>{const r=s.result();r.scope.omitted_case_ids=[];return r;}}));
- await s.run();assert.equal(s.ids.download.disabled,true);assert.match(s.ids['run-status'].textContent,/실행하지 못/);
+ await s.run();assert.equal(s.ids.download.disabled,true);assert.match(s.ids['run-status'].textContent,/실행 완료 여부를 확인하지 못했습니다/);
+});
+
+
+test('workspace overview distinguishes ready, busy, failure, stale, empty and error states',async()=>{
+ const s=setup();await s.settle();assert.equal(s.ids['workspace-title'].textContent,'실행 준비');
+ assert.match(s.ids['workspace-scope'].textContent,/2 \/ 2개 · 전체/);
+ let resolve;s.setNext(()=>new Promise(r=>resolve=r));const pending=s.run();
+ assert.match(s.ids['workspace-title'].textContent,/실행 중/);resolve(s.good());await pending;
+ assert.match(s.ids['workspace-title'].textContent,/불일치 1건/);
+ s.ids['review-priority'].click();assert.equal(s.ids['verdict-filter'].value,'FAIL');assert.equal(s.ids['case-detail'].hidden,false);
+ s.change('faq_version','corrected');assert.match(s.ids['workspace-title'].textContent,/재실행 필요/);assert.equal(s.ids['review-priority'].disabled,true);
+ s.ids['select-none'].click();assert.match(s.ids['workspace-title'].textContent,/사례를 선택/);
+ s.ids['select-all'].click();s.setNext(async()=>({ok:false,json:async()=>({error:{message:'offline'}})}));await s.run();
+ assert.equal(s.ids['workspace-title'].textContent,'실행 완료 미확인');
+ assert.doesNotMatch(s.ids['workspace-next'].textContent,/다시 실행/);
+});
+
+test('overview does not turn unknown or partial scope into approval',async()=>{
+ const s=setup();await s.settle();s.setNext(async()=>({ok:true,json:async()=>{const r=s.result();r.cases[0].business_verdict='PASS_WITHIN_SCOPE';r.counts={PASS_WITHIN_SCOPE:1,INCONCLUSIVE:1};r.readiness='REVIEW_REQUIRED';return r;}}));
+ await s.run();assert.match(s.ids['workspace-title'].textContent,/보류 1건/);assert.match(s.ids['review-priority'].textContent,/보류 근거/);
+ s.ids['review-priority'].click();assert.equal(s.ids['verdict-filter'].value,'INCONCLUSIVE');
+ s.ids['select-boundary'].click();s.setNext(async()=>({ok:true,json:async()=>{const r=s.result();r.cases[0].business_verdict='PASS_WITHIN_SCOPE';r.counts={PASS_WITHIN_SCOPE:1};r.readiness='PARTIAL_SCOPE';return r;}}));
+ await s.run();assert.equal(s.ids['workspace-title'].textContent,'선택 범위만 검증됨');assert.equal(s.ids['review-priority'].hidden,true);
+});
+
+test('persistent failed request reuses key; completed and changed requests get new keys',async()=>{
+ const s=setup({persistent:true});await s.settle();
+ const keys=()=>s.calls.filter(c=>c.path==='/api/run').map(c=>c.options.headers['Idempotency-Key']);
+ s.setNext(async()=>{throw new Error('response lost');});await s.run();await s.run();
+ assert.equal(keys().length,2);assert.equal(keys()[0],keys()[1]);
+ s.setNext(async()=>s.good());await s.run();assert.equal(keys()[2],keys()[0]);
+ await s.run();assert.notEqual(keys()[3],keys()[0]);
+ s.setNext(async()=>{throw new Error('lost');});await s.run();
+ s.change('faq_version','corrected');await s.run();assert.notEqual(keys()[4],keys()[5]);
+});
+
+test('pending keys survive reload, another configuration, and isolate workspaces',async()=>{
+ const session=memoryStorage();
+ const key=s=>s.calls.filter(c=>c.path==='/api/run').at(-1).options.headers['Idempotency-Key'];
+ const a=setup({persistent:true,session});await a.settle();a.setNext(async()=>{throw Error('lost');});await a.run();const original=key(a);
+ a.change('faq_version','corrected');await a.run();assert.notEqual(key(a),original);
+ a.change('faq_version','stale');await a.run();assert.equal(key(a),original);
+ const b=setup({persistent:true,session});await b.settle();
+ assert.equal(b.ids['workspace-action'].href,'#archive-executions');
+ assert.match(b.ids['run-status'].textContent,/완료 응답을 확인하지 못한/);
+ assert.equal(b.calls.filter(c=>c.path==='/api/run').length,0);
+ b.setNext(async()=>{throw Error('lost');});await b.run();assert.equal(key(b),original);
+ const c=setup({persistent:true,session,scope:'b'.repeat(64)});await c.settle();c.setNext(async()=>{throw Error('lost');});await c.run();assert.notEqual(key(c),original);
+});
+test('storage denied or malformed blocks execution before POST',async()=>{
+ for(const session of [{getItem(){throw Error('denied');}}, {getItem(){return 'invalid';}}]){
+  const s=setup({persistent:true,session});await s.settle();s.setNext(async()=>s.good());await s.run();
+  assert.equal(s.calls.filter(c=>c.path==='/api/run').length,0);
+ }
+});
+
+test('quota failure, silent failed writes and full store never send untracked requests',async()=>{
+ const full=Array.from({length:64},(_,i)=>({scope:'a'.repeat(64),body:'body'+i,key:'key'+i}));
+ for(const session of [
+  {getItem(){return null;},setItem(){throw Error('quota');}},
+  {getItem(){return null;},setItem(){}},
+  {getItem(){return JSON.stringify(full);},setItem(){throw Error('must not evict');}}
+ ]){
+  const s=setup({persistent:true,session});await s.settle();s.setNext(async()=>s.good());await s.run();
+  assert.equal(s.calls.filter(c=>c.path==='/api/run').length,0);
+ }
+});
+
+
+test('policy selection refreshes context, clears results and keeps pending identities separate',async()=>{
+ const session=memoryStorage(),s=setup({persistent:true,session});await s.settle();
+ s.setNext(async()=>s.good());await s.run();assert.equal(s.ids.download.disabled,false);
+ s.context.policy_version='returns-20270115';s.context.change.effective_date='2027-01-15';s.context.change.new_window_days=21;
+ s.context.cases.splice(1);s.context.cases[0].label='Alternate boundary';
+ s.ids['policy-version'].value='returns-20270115';await s.ids['policy-version'].handlers.change();
+ assert.equal(s.calls.at(-1).path,'/api/context?policy_version=returns-20270115');
+ assert.equal(s.ids['result-content'].hidden,true);assert.equal(s.ids.download.disabled,true);
+ assert.match(s.ids['effective-date'].textContent,/2027-01-15/);assert.match(s.ids['policy-change'].textContent,/21/);
+ assert.equal(s.ids['scenario-list'].children.length,1);assert.equal(s.calls.filter(c=>c.path==='/api/run').length,1);
+ s.setNext(async()=>{throw Error('lost');});await s.run();
+ const selected=s.calls.at(-1);assert.equal(JSON.parse(selected.options.body).policy_version,'returns-20270115');
+ const originalKey=selected.options.headers['Idempotency-Key'];
+ s.context.policy_version=null;s.ids['policy-version'].value='';await s.ids['policy-version'].handlers.change();await s.run();
+ assert.notEqual(s.calls.at(-1).options.headers['Idempotency-Key'],originalKey);
+ s.context.policy_version='returns-20270115';s.ids['policy-version'].value='returns-20270115';await s.ids['policy-version'].handlers.change();await s.run();
+ assert.equal(s.calls.at(-1).options.headers['Idempotency-Key'],originalKey);
+});
+
+test('mismatched policy result and mismatched context fail closed',async()=>{
+ const s=setup();await s.settle();s.setNext(async()=>({ok:true,json:async()=>({...s.result(),configuration:{faq_version:'stale',api_version:'stale',case_ids:['S01','S02'],policy_version:'returns-20270115'}})}));
+ await s.run();assert.equal(s.ids.download.disabled,true);
+ s.ids['policy-version'].value='returns-20270115';await s.ids['policy-version'].handlers.change();
+ assert.equal(s.ids.run.disabled,true);assert.equal(s.ids['scenario-list'].children.length,0);assert.equal(s.ids['before-source'].textContent,'');
+ assert.match(s.ids.connection.textContent,/정책 버전/);
 });

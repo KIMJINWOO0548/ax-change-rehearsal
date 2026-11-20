@@ -7,7 +7,7 @@ import argparse
 import json
 import sys
 
-from rehearsal.recovery import create_backup, inspect_backup, restore_backup, RecoveryError
+from rehearsal.recovery import create_backup, inspect_backup, restore_backup, rollover_workspace, RecoveryError
 
 
 def main(argv=None):
@@ -21,12 +21,18 @@ def main(argv=None):
     restore = commands.add_parser('restore', help='Restore into a new private workspace; never overwrite')
     restore.add_argument('--source', required=True)
     restore.add_argument('--destination', required=True)
+    rollover = commands.add_parser('rollover', help='Stop writer, archive current segment and create a new empty workspace')
+    rollover.add_argument('--workspace', required=True)
+    rollover.add_argument('--archive', required=True)
+    rollover.add_argument('--destination', required=True)
     args = parser.parse_args(argv)
     try:
         if args.command == 'backup':
             result = create_backup(args.workspace, args.destination)
         elif args.command == 'inspect':
             result = inspect_backup(args.source)
+        elif args.command == 'rollover':
+            result = rollover_workspace(args.workspace, args.archive, args.destination)
         else:
             result = restore_backup(args.source, args.destination)
         print(json.dumps({'operation': args.command, 'status': 'VERIFIED',

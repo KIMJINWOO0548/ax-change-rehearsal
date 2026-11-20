@@ -163,7 +163,8 @@ class SealedTests(unittest.TestCase):
         with self.assertRaises(Exception): EvidenceStore(self.target)
 
     def test_publication_failure_never_publishes_partial_file(self):
-        with patch.object(sealed.os, 'link', side_effect=OSError('synthetic failure')):
+        publication = 'rename' if os.name == 'nt' else 'link'
+        with patch.object(sealed.os, publication, side_effect=OSError('synthetic failure')):
             with self.assertRaises(sealed.SealedError): self.seal()
         self.assertFalse(self.file.exists())
         self.assertFalse(list(self.root.glob('.sealed-*')))

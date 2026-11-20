@@ -2,6 +2,12 @@
 (function(root){
   'use strict';
   const statuses={UNREVIEWED:'미검토',REVIEWED:'검토함 · 승인 아님',CHANGES_REQUESTED:'수정 요청'};
+  const verdicts={PASS_WITHIN_SCOPE:'범위 내 통과',FAIL:'불일치',INCONCLUSIVE:'판정 보류'};
+  const attemptLabels={INCOMPLETE:'완료 미확인',FAILED:'실행 오류 기록',COMPLETED:'보고서 저장 완료',RECORDED:'탐침 결과 기록됨'};
+  const stageLabels={initial_observation:'초기 관찰',invocation:'호출',observation:'독립 관찰',replay_invocation:'중복 방지 시험 호출',replay_observation:'중복 방지 시험 관찰'};
+  const stageStates={STARTED:'시작 기록만 있음 · 확인 필요',COMPLETED:'완료 기록',FAILED:'오류 기록 · 확인 필요'};
+  const version=v=>v==='corrected'?'변경 반영':'이전 정책';
+  const when=value=>{const d=new Date(value);return Number.isNaN(d.getTime())?value:new Intl.DateTimeFormat('ko-KR',{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'UTC'}).format(d)+' UTC';};
   const uuid=/^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
   const hash=/^[0-9a-f]{64}$/;
   function validRecord(r){return !!r&&typeof r.created_at==='string'&&r.created_at.trim().length>0&&uuid.test(r.run_id)&&hash.test(r.sha256)&&Number.isSafeInteger(r.revision)&&r.revision>=0&&r.review_is_approval===false&&Object.hasOwn(statuses,r.review_status);}
@@ -21,6 +27,30 @@
       throw new Error('저장 목록 응답이 유효하지 않습니다.');
     return data;
   }
+  function validateExecutions(data){
+    const invalid=()=>new Error('실행 기록 응답이 유효하지 않습니다.');
+    if(data?.automatic_retry!==false||!Array.isArray(data.executions)||data.executions.length>1000)throw invalid();
+    const attemptIds=new Set();
+    for(const item of data.executions){
+      if(!object(item)||typeof item.attempt_id!=='string'||!uuid.test(item.attempt_id)||attemptIds.has(item.attempt_id)||
+        typeof item.created_at!=='string'||!Number.isFinite(Date.parse(item.created_at))||
+        !(item.type==='attempt_started'?['INCOMPLETE','FAILED','COMPLETED']:item.type==='probe_started'?['INCOMPLETE','RECORDED']:[]).includes(item.state)||
+        (Object.hasOwn(item,'stages')&&!Array.isArray(item.stages)))throw invalid();
+      attemptIds.add(item.attempt_id);
+      const stages=item.stages??[], stageIds=new Set();
+      for(const stage of stages){
+        if(!object(stage)||stage.attempt_id!==item.attempt_id||typeof stage.operation_key!=='string'||!stage.operation_key.length||
+          stage.operation_key.length>256||!Object.hasOwn(stageLabels,stage.stage)||!Object.hasOwn(stageStates,stage.state))throw invalid();
+        const identity=JSON.stringify([stage.operation_key,stage.stage]);
+        if(stageIds.has(identity))throw invalid();
+        stageIds.add(identity);
+      }
+      const confirmation=!['COMPLETED','RECORDED'].includes(item.state)||stages.some(s=>s.state!=='COMPLETED');
+      if(item.confirmation_required!==confirmation||
+        (item.state==='COMPLETED'&&stages.some(s=>s.state==='STARTED')))throw invalid();
+    }
+    return data.executions;
+  }
   function validReport(p){
     if(!object(p)||p.synthetic_only!==true||typeof p.created_at!=='string'||!p.created_at.trim()||!Array.isArray(p.cases)||!p.cases.length||p.cases.some(c=>!object(c)))return false;
     const actualIds=p.cases.map(c=>c.id),s=p.scope,c=p.configuration,m=p.manifest;
@@ -33,11 +63,23 @@
     const counts={PASS_WITHIN_SCOPE:0,FAIL:0,INCONCLUSIVE:0};
     for(const item of p.cases){if(!Object.hasOwn(counts,item.business_verdict))return false;counts[item.business_verdict]++;}
     if(!object(p.counts)||Object.keys(p.counts).some(k=>!Object.hasOwn(counts,k))||Object.entries(counts).some(([k,v])=>(p.counts[k]??0)!==v))return false;
+    const sides=['before','after'], root='fixtures/customer_service/';
+    let policyPaths=sides.map(side=>root+'policy_'+side+'.md');
+    if(Object.hasOwn(c,'policy_version')){
+      const id=c.policy_version;
+      if(typeof id!=='string'||!/^returns-[0-9]{8}$/.test(id)||m?.api_manifest?.policy_version!==id)return false;
+      const boundRoot=[root,root+'versions/'+id+'/'].find(base=>sides.every(side=>p.policy?.[side]?.path===base+'policy_'+side+'.md'));
+      if(!boundRoot)return false;
+      policyPaths=sides.map(side=>boundRoot+'policy_'+side+'.md');
+      if(!hashes(m.api_manifest.policy_artifacts,policyPaths)||
+          sides.some((side,i)=>p.policy[side].sha256!==m.policy_sha256?.[side]||
+            p.policy[side].sha256!==m.api_manifest.policy_artifacts[policyPaths[i]]))return false;
+    }
     const readiness=counts.FAIL?'BLOCKED':counts.INCONCLUSIVE?'REVIEW_REQUIRED':!s.complete?'PARTIAL_SCOPE':'PASS_WITHIN_REGISTERED_SCOPE';
     return p.readiness===readiness&&object(m)&&same(m.configuration,c)&&same(m.scope,s)&&
       hash.test(p.manifest_sha256)&&hash.test(m.registered_pack_sha256)&&hash.test(m.faq_sha256)&&hash.test(m.faq_artifact_sha256)&&
       hashes(m.policy_sha256,['before','after'])&&hash.test(m.api_manifest?.pack_digest)&&
-      hashes(m.api_manifest?.sources,['rehearsal/engine.py','rehearsal/adapters.py','rehearsal/validation.py','fixtures/customer_service/policy_before.md','fixtures/customer_service/policy_after.md'])&&
+      hashes(m.api_manifest?.sources,['rehearsal/engine.py','rehearsal/adapters.py','rehearsal/validation.py',...policyPaths])&&
       hashes(m.service_sources,['rehearsal/app.py','rehearsal/workbench.py']);
   }
   function validateDetail(data,id){
@@ -58,10 +100,11 @@
   }
   function mount(document,request){
     const $=id=>document.getElementById(id);
-    const state={context:null,enabled:false,detail:null,busy:false,loading:false,generation:0,uncertain:false};
+    const state={context:null,enabled:false,detail:null,busy:false,loading:false,generation:0,executionRequest:0,uncertain:false,runs:[]};
     const node=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;};
     const notice=(text,error=false)=>{$('archive-status').textContent=text;$('archive-status').className=error?'notice error':'section-note';};
     function controls(){
+      $('archive-filter').disabled=!state.enabled||state.busy||state.loading;
       $('archive-refresh').disabled=!state.enabled||state.busy||state.loading;
       $('archive-save').disabled=!state.enabled||!state.detail||state.busy||state.loading||state.uncertain;
       $('archive-reload-detail').disabled=!state.detail||state.busy||state.loading;
@@ -71,19 +114,46 @@
       $('archive-save').textContent=state.busy?'저장 확인 중…':'로컬 검토 메모 저장';
       $('archive-detail').setAttribute('aria-busy',String(state.busy||state.loading));
     }
+    function renderList(){
+      const filter=$('archive-filter').value||'all';
+      const shown=state.runs.filter(r=>filter==='all'||r.review_status===filter);
+      $('archive-list').replaceChildren();
+      for(const r of shown){
+        const row=node('li'),content=node('span'),button=node('button','저장 근거 열기');
+        const status=node('strong',statuses[r.review_status]);status.className='archive-review-badge '+r.review_status.toLowerCase();
+        const time=node('span',when(r.created_at));time.className='archive-time';
+        const identity=node('small','실행 '+r.run_id.slice(0,8)+' · 리비전 '+r.revision);identity.className='archive-id';
+        content.append(status,time,identity);button.type='button';button.className='secondary';
+        button.setAttribute('aria-label',r.run_id+' 저장 근거 열기');button.addEventListener('click',()=>open(r.run_id));
+        row.append(content,button);$('archive-list').append(row);
+      }
+      $('archive-filter-count').textContent=shown.length+' / '+state.runs.length+'개 표시'+(!shown.length&&state.runs.length?' · 이 검토 표시에 해당하는 기록이 없습니다.':'');
+    }
     function renderDetail(){
       const {record:r,report:p,events}=state.detail;
       $('archive-meta').textContent='저장 실행 '+r.run_id+'\n'+statuses[r.review_status]+' · 리비전 '+r.revision+'\nReport SHA-256 '+r.sha256+
+        (p.configuration.policy_version?'\n정책 버전 '+p.configuration.policy_version:'')+
         '\n실행 시각 '+p.created_at+' · FAQ '+p.configuration.faq_version+' / API '+p.configuration.api_version+' · '+p.total+'개';
+      const summary=$('archive-summary');summary.replaceChildren();
+      for(const [label,value] of [['검토 표시',statuses[r.review_status]],['실행 시각',when(p.created_at)],['검증 범위',p.scope.complete?'등록 '+p.total+'개 전체':'부분 '+p.total+' / '+p.scope.registered_total+'개'],['업무 판정','통과 '+(p.counts.PASS_WITHIN_SCOPE||0)+' · 불일치 '+(p.counts.FAIL||0)+' · 보류 '+(p.counts.INCONCLUSIVE||0)],['FAQ / API',version(p.configuration.faq_version)+' / '+version(p.configuration.api_version)]]){const pair=node('div');pair.append(node('dt',label),node('dd',value));summary.append(pair);}
       const evidence=$('archive-evidence');evidence.replaceChildren();
       for(const c of p.cases){
-        const d=node('details');d.className='raw-object';d.append(node('summary',(c.label||c.id)+' · '+c.business_verdict));
+        const d=node('details');d.className='raw-object';d.append(node('summary',(c.label||c.id)+' · '+verdicts[c.business_verdict]));
         d.append(node('p',c.reason||'판정 사유 없음'));
+        d.append(node('p','FAQ·API 교차 판단 · '+(root.RehearsalReview?.crosscheckText(c.crosscheck) ?? '교차 근거 미기록')));
+        d.append(node('p','모의 알림 의도 · 기준 '+(root.RehearsalReview?.effectsText(c.baseline?.effects) ?? '효과 근거 미기록')));
+        if(c.candidate?.effects) d.append(node('p','모의 알림 의도 · 후보 '+root.RehearsalReview.effectsText(c.candidate.effects)));
         for(const e of c.evidence||[]){const item=node('p',e.quote+'\n'+e.path+':'+e.line+'\nSHA-256 '+e.sha256);item.className='mono evidence';d.append(item);}
         d.append(node('pre',JSON.stringify(c,null,2)));evidence.append(d);
       }
       const raw=node('details');raw.className='raw-object';raw.append(node('summary','저장 실행 전체 JSON · 읽기 전용'),node('pre',JSON.stringify(p,null,2)));evidence.append(raw);
-      $('archive-events').replaceChildren(...events.map(e=>node('li','리비전 '+e.revision+' · '+statuses[e.status]+' · '+e.created_at+'\n'+e.note+'\n근거 SHA-256 '+e.report_sha256+'\n이벤트 SHA-256 '+e.event_sha256+'\n이전 이벤트 SHA-256 '+(e.previous_sha256||'없음'))));
+      $('archive-events').replaceChildren(...events.map(e=>{
+        const row=node('li'),heading=node('div');heading.className='event-heading';
+        heading.append(node('strong',statuses[e.status]),node('span','리비전 '+e.revision+' · '+when(e.created_at)));
+        const note=node('p',e.note||'메모 내용 없음');note.className='event-note';
+        const hashes=node('details');hashes.append(node('summary','연결된 근거 hash 확인'),node('p','근거 SHA-256 '+e.report_sha256+'\n이벤트 SHA-256 '+e.event_sha256+'\n이전 이벤트 SHA-256 '+(e.previous_sha256||'없음')));
+        row.append(heading,note,hashes);return row;
+      }));
       if(!events.length)$('archive-events').append(node('li','검토 메모가 없습니다.'));
       $('archive-detail').hidden=false;
     }
@@ -93,11 +163,42 @@
       try{
         const data=validateList(await request('/api/runs'));if(generation!==state.generation)return;
         if(!Array.isArray(data?.runs)||data.runs.some(r=>!validRecord(r))||new Set(data.runs.map(r=>r.run_id)).size!==data.runs.length)throw new Error('저장 목록 응답이 유효하지 않습니다.');
-        $('archive-list').replaceChildren();
-        for(const r of data.runs){const row=node('li'),button=node('button','저장 근거 열기');button.type='button';button.className='secondary';button.setAttribute('aria-label',r.run_id+' 저장 근거 열기');button.addEventListener('click',()=>open(r.run_id));row.append(node('span',r.run_id+'\n'+statuses[r.review_status]+' · 리비전 '+r.revision),button);$('archive-list').append(row);}
+        state.runs=data.runs;renderList();
         notice(data.runs.length?'저장된 합성 실행 '+data.runs.length+'개. 현재 실행 결과와 별도로 열립니다.':'저장된 실행이 없습니다. 저장 모드에서 새로 실행하면 기록됩니다.');
-      }catch(e){notice('저장 목록을 확인하지 못했습니다. '+e.message,true);}
-      finally{state.loading=false;controls();}
+      }catch(e){if(generation!==state.generation)return;notice('저장 목록을 확인하지 못했습니다. '+e.message,true);}
+      finally{if(generation===state.generation){state.loading=false;controls();}}
+    }
+    async function refreshExecutions(){
+      if(!state.enabled)return;
+      const generation=state.generation, token=++state.executionRequest;
+      const status=$('archive-execution-status'), list=$('archive-execution-list');
+      status.textContent='실행 기록을 확인하는 중입니다.';list.replaceChildren();
+      try{
+        const attempts=validateExecutions(await request('/api/executions'));
+        if(generation!==state.generation||token!==state.executionRequest)return;
+        for(const item of attempts){
+          const stages=item.stages??[], completed=stages.filter(s=>s.state==='COMPLETED').length;
+          const details=node('details'), row=node('li');
+          const label=(item.type==='probe_started'?'탐침 ':'실행 ')+item.attempt_id.slice(0,8)+' · '+attemptLabels[item.state];
+          details.append(node('summary',label+(item.confirmation_required?' · 확인 필요':'')+' · '+when(item.created_at)));
+          details.append(node('p',stages.length?'완료 단계 '+completed+'개 · 확인 필요 '+(stages.length-completed)+'개':
+            '남아 있는 단계 기록이 없어 단계별 결과를 확인할 수 없습니다.'));
+          if(item.confirmation_required)details.append(node('p','기록되지 않은 단계의 결과는 확인되지 않았습니다.'));
+          if(stages.length)details.addEventListener('toggle',()=>{
+            if(!details.open)return;
+            const phaseList=node('ul');
+            for(const stage of stages)phaseList.append(node('li',stage.operation_key+' · '+stageLabels[stage.stage]+' · '+stageStates[stage.state]+
+              (root.RehearsalReview?.intentCheckpointText(stage.evidence?.value?.notification_intents) ?? '')));
+            details.append(phaseList);
+          },{once:true});
+          row.append(details);list.append(row);
+        }
+        status.textContent=attempts.length?'저장된 실행 기록 '+attempts.length+'개. 완료 단계는 응답 또는 관찰 기록을 뜻합니다. 자동으로 재실행하지 않습니다.':
+          '저장된 실행 기록이 없습니다. 기록이 없으면 요청의 실제 실행 여부를 확인할 수 없습니다.';
+      }catch(e){
+        if(generation!==state.generation||token!==state.executionRequest)return;
+        list.replaceChildren();status.textContent='저장된 실행 상태를 확인하지 못했습니다. '+e.message;
+      }
     }
     async function open(id,preserve=false){
       if(!state.enabled||state.busy||state.loading)return;
@@ -108,34 +209,43 @@
         const data=validateDetail(await request('/api/runs/'+encodeURIComponent(id)),id);if(generation!==state.generation)return;
         state.detail=data;state.uncertain=false;renderDetail();if(!preserve){$('archive-note').value='';$('archive-review-status').value='REVIEWED';}
         notice(preserve?'최신 기록을 다시 확인했습니다. 남아 있는 입력과 이력을 비교한 뒤 저장하세요.':'과거 저장 근거를 열었습니다. 현재 실행 결과는 바뀌지 않습니다.');$('archive-detail').focus();
-      }catch(e){state.uncertain=true;notice('저장 근거를 확인하지 못했습니다. '+e.message,true);}
-      finally{state.loading=false;controls();}
+      }catch(e){if(generation!==state.generation)return;state.uncertain=true;notice('저장 근거를 확인하지 못했습니다. '+e.message,true);}
+      finally{if(generation===state.generation){state.loading=false;controls();}}
     }
     async function save(event){
       event.preventDefault();if(!state.enabled||!state.detail||state.busy||state.loading||state.uncertain)return;
       const old=state.detail.record;let payload;
       try{payload=reviewPayload(old,$('archive-review-status').value,$('archive-note').value);}catch(e){notice(e.message,true);return;}
-      state.busy=true;controls();
+      const generation=state.generation;state.busy=true;controls();
       try{
         const data=await request('/api/runs/'+old.run_id+'/review',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':state.context.csrf_token},body:JSON.stringify(payload)});
+        if(generation!==state.generation)return;
         const next=validateDetail(data,old.run_id);
         if(next.record.sha256!==old.sha256||next.record.revision!==old.revision+1||next.record.review_status!==payload.status||next.events.at(-1)?.note!==payload.note)throw new Error('저장 확인 응답이 요청과 일치하지 않습니다.');
-        state.detail=next;renderDetail();$('archive-note').value='';notice('로컬 검토 메모를 저장했습니다. 승인이나 배포 허가는 아닙니다. 목록은 새로고침으로 확인하세요.');
-      }catch(e){state.uncertain=true;notice('저장 완료를 확인하지 못했습니다. '+e.message+' 입력은 유지했습니다. 중복 저장하지 말고 “이 기록 다시 확인”으로 최신 이력을 확인하세요.',true);}
-      finally{state.busy=false;controls();}
+        state.detail=next;state.runs=state.runs.map(r=>r.run_id===next.record.run_id?next.record:r);renderDetail();renderList();$('archive-note').value='';notice('로컬 검토 메모를 저장했습니다. 승인이나 배포 허가는 아닙니다. 목록은 새로고침으로 확인하세요.');
+      }catch(e){if(generation!==state.generation)return;state.uncertain=true;notice('저장 완료를 확인하지 못했습니다. '+e.message+' 입력은 유지했습니다. 중복 저장하지 말고 “이 기록 다시 확인”으로 최신 이력을 확인하세요.',true);}
+      finally{if(generation===state.generation){state.busy=false;controls();}}
     }
-    $('archive-refresh').addEventListener('click',refresh);
+    $('archive-filter').addEventListener('change',renderList);
+    $('archive-refresh').addEventListener('click',()=>{refresh();refreshExecutions();});
     $('archive-review-form').addEventListener('submit',save);
     $('archive-reload-detail').addEventListener('click',()=>state.detail&&open(state.detail.record.run_id,true));
     $('archive-close').addEventListener('click',()=>{$('archive-detail').hidden=true;$('archive-refresh').focus();});
     return {configure(context){
-      state.generation++;state.context=context;
+      const previous=state.context, wasEnabled=state.enabled;state.context=context;
       const s=context?.storage;state.enabled=!!(s?.enabled===true&&s.kind==='local-synthetic'&&s.review_is_approval===false&&context.csrf_token);
       $('archive-mode').textContent=state.enabled?'로컬 합성 저장 사용 중 · 서버 작업 폴더에 실행 근거와 검토 메모가 저장됩니다. 새로고침 후에도 이 목록에서 열 수 있습니다.':
         '로컬 저장 꺼짐 · 현재 실행은 저장되지 않습니다. 저장하려면 서버 시작 시 --workspace 전용폴더 옵션을 명시하세요. 실제 고객 자료를 넣지 마세요.';
-      if(!state.enabled){state.detail=null;$('archive-detail').hidden=true;$('archive-list').replaceChildren();}
-      controls();if(state.enabled)refresh();
-    },afterRun(result){if(state.enabled){if(!validRecord(result.record)||result.record.run_id!==result.run_id)notice('실행은 완료됐지만 저장 확인 정보가 없습니다. 저장 목록에서 확인하세요.',true);else refresh();}}};
+      $('archive-executions').hidden=!state.enabled;
+      if(!state.enabled||!wasEnabled||previous.csrf_token!==context.csrf_token||previous.storage.request_scope!==s.request_scope){
+        state.generation++;state.loading=false;state.busy=false;state.uncertain=false;
+        state.detail=null;state.runs=[];$('archive-filter-count').textContent='';$('archive-detail').hidden=true;$('archive-list').replaceChildren();
+      }
+      controls();if(state.enabled){refresh();refreshExecutions();}
+    },refreshExecutions,afterRun(result){if(state.enabled){
+      refreshExecutions();
+      if(!validRecord(result.record)||result.record.run_id!==result.run_id)notice('실행은 완료됐지만 저장 확인 정보가 없습니다. 저장 목록에서 확인하세요.',true);else refresh();
+    }}};
   }
   const api={validRecord,validateDetail,validateList,reviewPayload,mount};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.RehearsalArchive=api;

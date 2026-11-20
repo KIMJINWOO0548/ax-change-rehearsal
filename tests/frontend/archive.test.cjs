@@ -19,25 +19,65 @@ test('detail rejects wrong run, missing evidence, and inconsistent chronology',(
  assert.equal(archive.validateDetail(detail(),id).record.run_id,id);
  for(const alter of [d=>d.report.run_id='wrong',d=>d.report.cases=[],d=>d.record.revision=1,d=>d.record.review_status='REVIEWED',d=>d.events.push({revision:1})]){const d=detail();alter(d);assert.throws(()=>archive.validateDetail(d,id));}
 });
+test('saved versioned report verifies its own evidence paths instead of the legacy paths',()=>{
+ const version='returns-20270115', d=detail(), {report:p}=d, manifest=p.manifest.api_manifest;
+ const base='fixtures/customer_service/', root=base+'versions/'+version+'/';
+ p.configuration.policy_version=p.manifest.configuration.policy_version=manifest.policy_version=version;
+ p.policy={};manifest.policy_artifacts={};
+ for(const side of ['before','after']){
+  const name='policy_'+side+'.md', path=root+name;
+  delete manifest.sources[base+name];
+  manifest.sources[path]=manifest.policy_artifacts[path]=h;
+  p.policy[side]={path,sha256:h};
+ }
+ assert.equal(archive.validateDetail(d,id).report.configuration.policy_version,version);
+ p.policy.after.path=base+'policy_after.md';
+ assert.throws(()=>archive.validateDetail(d,id));
+});
 test('payload pins evidence and revision; accepts literal text without HTML rendering',()=>{
  assert.deepEqual(archive.reviewPayload(record(),'CHANGES_REQUESTED','<script>literal</script>'),{expected_revision:0,report_sha256:h,status:'CHANGES_REQUESTED',note:'<script>literal</script>'});
  assert.throws(()=>archive.reviewPayload(record(),'APPROVED',''));
  assert.throws(()=>archive.reviewPayload(record(),'REVIEWED','a'.repeat(1001)));
 });
 class Node{
- constructor(){this.handlers={};this.children=[];this.value='';}
+ constructor(){this.handlers={};this.children=[];this.value='';this.text='';}
+ set textContent(v){this.text=v;this.children=[];}get textContent(){return this.text+this.children.map(n=>n.textContent||'').join('');}
  addEventListener(k,fn){this.handlers[k]=fn;}setAttribute(){}focus(){}append(...n){this.children.push(...n);}replaceChildren(...n){this.children=n;}
 }
 const settle=()=>new Promise(r=>setImmediate(r));
 function setup(){
  const nodes={};const doc={getElementById:id=>nodes[id]??=new Node(),createElement:()=>new Node()};
- let post,getDetail;const calls=[];const d=detail();
- const request=async(path,options)=>{calls.push({path,options});if(options)return post();if(path==='/api/runs')return {runs:[record()],storage};return getDetail?getDetail():structuredClone(d);};
+ let post,getDetail,getList=()=>({runs:[record()],storage}),getExecutions=()=>({automatic_retry:false,executions:[]});const calls=[];const d=detail();
+ const request=async(path,options)=>{
+  calls.push({path,options});if(options)return post();
+  if(path==='/api/runs')return getList();
+  if(path==='/api/executions')return getExecutions();
+  return getDetail?getDetail():structuredClone(d);
+ };
  const controller=archive.mount(doc,request);
- return {nodes,controller,calls,post(fn){post=fn;},getDetail(fn){getDetail=fn;},async start(){controller.configure({csrf_token:'csrf',storage:{enabled:true,kind:'local-synthetic',review_is_approval:false}});await settle();await nodes['archive-list'].children[0].children[1].handlers.click();nodes['archive-review-status'].value='REVIEWED';}};
+ return {nodes,controller,calls,getList(fn){getList=fn;},post(fn){post=fn;},getDetail(fn){getDetail=fn;},getExecutions(fn){getExecutions=fn;},async start(){controller.configure({csrf_token:'csrf',storage:{enabled:true,kind:'local-synthetic',review_is_approval:false}});await settle();await nodes['archive-list'].children[0].children[1].handlers.click();nodes['archive-review-status'].value='REVIEWED';}};
 }
 test('disabled storage makes no list requests and cannot save',async()=>{
  const a=setup();a.controller.configure({storage:{enabled:false}});await settle();assert.equal(a.calls.length,0);assert.equal(a.nodes['archive-save'].disabled,true);
+});
+test('execution archive displays confirmed and unknown stages without posting or retaining stale results',async()=>{
+ const a=setup();
+ const stage=(phase,state)=>({attempt_id:id,operation_key:'<synthetic>',stage:phase,state});
+ const runs={automatic_retry:false,executions:[{type:'attempt_started',attempt_id:id,created_at:created,
+   state:'INCOMPLETE',confirmation_required:true,stages:[stage('initial_observation','COMPLETED'),stage('invocation','FAILED'),stage('observation','STARTED')]}]};
+ a.getExecutions(()=>runs);await a.start();
+ const list=a.nodes['archive-execution-list'],details=list.children[0].children[0];
+ assert.match(list.textContent,/완료 미확인/);
+ details.open=true;details.handlers.toggle();
+ assert.match(details.textContent,/초기 관찰 · 완료 기록/);
+ assert.match(details.textContent,/호출 · 오류 기록 · 확인 필요/);
+ assert.match(details.textContent,/독립 관찰 · 시작 기록만 있음 · 확인 필요/);
+ assert.equal(a.calls.some(c=>c.options),false);
+ a.getExecutions(()=>({...runs,automatic_retry:true}));await a.controller.refreshExecutions();
+ assert.equal(list.children.length,0);assert.match(a.nodes['archive-execution-status'].textContent,/확인하지 못했습니다/);
+ assert.equal(a.nodes['archive-list'].children.length,1);
+ a.getExecutions(()=>{throw new Error('offline');});await a.controller.refreshExecutions();
+ assert.match(a.nodes['archive-execution-status'].textContent,/확인하지 못했습니다/);
 });
 test('uncertain POST retains note, blocks double click and requires explicit re-read',async()=>{
  const a=setup();await a.start();let reject;a.post(()=>new Promise((_,r)=>reject=r));a.nodes['archive-note'].value='Keep my note';
@@ -95,4 +135,34 @@ test('pending detail read locks inputs and keeps their binding until response',a
  resolve(detail());await reading;
  assert.equal(a.nodes['archive-note'].disabled,false);assert.equal(a.nodes['archive-review-status'].disabled,false);
  assert.equal(a.nodes['archive-note'].value,'Retain this draft');
+});
+
+
+test('archive filter preserves full list and shows review status without interpreting notes',async()=>{
+ const a=setup();await a.start();assert.match(a.nodes['archive-list'].textContent,/2026년/);
+ a.nodes['archive-filter'].value='CHANGES_REQUESTED';a.nodes['archive-filter'].handlers.change();
+ assert.equal(a.nodes['archive-list'].children.length,0);assert.match(a.nodes['archive-filter-count'].textContent,/0 \/ 1개/);
+ a.nodes['archive-filter'].value='all';a.nodes['archive-filter'].handlers.change();assert.equal(a.nodes['archive-list'].children.length,1);
+ assert.match(a.nodes['archive-summary'].textContent,/부분|전체/);assert.match(a.nodes['archive-summary'].textContent,/이전 정책 \/ 변경 반영/);
+});
+test('policy switch keeps an in-flight list read for the same archive',async()=>{
+ const a=setup(), context={csrf_token:'csrf',storage};let resolve;
+ a.getList(()=>new Promise(r=>resolve=r));
+ a.controller.configure(context);
+ a.controller.configure({...context,policy_version:'returns-20270115'});
+ resolve({runs:[record()],storage});await settle();
+ assert.equal(a.nodes['archive-list'].children.length,1);
+ assert.equal(a.nodes['archive-refresh'].disabled,false);
+});
+test('a confirmed old review cannot reopen a disabled archive or clear its draft',async()=>{
+ const a=setup();await a.start();let resolve;
+ a.nodes['archive-note'].value='keep draft';a.post(()=>new Promise(r=>resolve=r));
+ const saving=a.nodes['archive-review-form'].handlers.submit({preventDefault(){}});
+ a.controller.configure(null);
+ const d=detail();d.record.revision=1;d.record.review_status='REVIEWED';
+ d.events=[{revision:1,status:'REVIEWED',note:'keep draft',created_at:created,report_sha256:h,event_sha256:'b'.repeat(64),previous_sha256:'0'.repeat(64)}];
+ resolve(d);await saving;
+ assert.equal(a.nodes['archive-detail'].hidden,true);
+ assert.equal(a.nodes['archive-note'].value,'keep draft');
+ assert.equal(a.nodes['archive-save'].disabled,true);
 });

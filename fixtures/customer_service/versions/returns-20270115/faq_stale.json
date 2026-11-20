@@ -1,0 +1,14 @@
+{
+  "content": {
+    "region": "KR",
+    "effective_date": "2027-01-15",
+    "old_window_days": 14,
+    "new_window_days": 14
+  },
+  "review": {
+    "status": "REVIEWED_SYNTHETIC",
+    "reviewer": "synthetic_demo_author",
+    "content_sha256": "65bf97c0fe72c1499417472f720ba5e3e488dca53948ff0074a39f6427d701da",
+    "scope": "Authored synthetic fixture, not company policy or expert review."
+  }
+}

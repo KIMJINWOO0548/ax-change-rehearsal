@@ -2,15 +2,18 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import os
 import re
 import secrets
 import uuid
+from urllib.parse import urlsplit, parse_qs
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .app import build_context, execute_run
-from .engine import ROOT
+from .engine import ROOT, stage_recorder
 from .validation import _reject_constant, _unique_pairs
-from .storage import EvidenceStore, StorageError, StorageConflict, StorageLimit, RunNotFound, storage_info
+from .storage import EvidenceStore, StorageError, StorageConflict, ExecutionConflict, StorageLimit, RunNotFound, storage_info
 
 
 ASSETS = {'/': ('index.html', 'text/html; charset=utf-8'),
@@ -23,11 +26,42 @@ MAX_BODY = 2048
 CSP = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 
 
+def execute_persisted(store, configuration, runner, *, request_key=None):
+    """Commit the start before execution; never replay unfinished attempts."""
+    if request_key is None:
+        attempt_id = store.begin_attempt(configuration)
+    else:
+        attempt, claimed = store.claim_attempt(configuration, request_key)
+        attempt_id = attempt['attempt_id']
+        if not claimed:
+            if attempt['state'] != 'COMPLETED':
+                raise ExecutionConflict('Execution already recorded; automatic replay prohibited')
+            saved = store.get(attempt['run_id'])
+            return {**saved['report'], 'record': saved['record']}
+
+    token = stage_recorder.set(lambda key, stage, state, evidence:
+        store.record_stage(attempt_id, key, stage, state, evidence))
+    try:
+        result = runner(configuration)
+    except Exception:
+        # Failure to save this marker leaves INCOMPLETE, never a false success.
+        store.fail_attempt(attempt_id)
+        raise
+    finally:
+        stage_recorder.reset(token)
+    # A finished computation with an unconfirmed save is not an execution failure.
+    # Preserve INCOMPLETE for inspection; never automatically rerun.
+    record = store.save(result, attempt_id=attempt_id)
+    return {**result, 'record': record}
+
+
 class WorkbenchServer(ThreadingHTTPServer):
     daemon_threads = True
 
     def __init__(self, port, workspace=None):
         self.store = EvidenceStore(workspace) if workspace is not None else None
+        self.request_scope = (hashlib.sha256(os.path.normcase(str(self.store.workspace.resolve())).encode('utf-8')).hexdigest()
+                              if self.store is not None else None)
         self.csrf_token = secrets.token_urlsafe(32)
         super().__init__(('127.0.0.1', port), WorkbenchHandler)
 
@@ -83,23 +117,40 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self._trusted_request():
             return
-        if self.path == '/api/context':
+        if urlsplit(self.path).path == '/api/context':
             try:
-                context = build_context()
+                query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                if set(query) - {'policy_version'}:
+                    self._error(404, 'NOT_FOUND', '등록되지 않은 경로입니다.')
+                    return
+                if query and len(query['policy_version']) != 1:
+                    raise ValueError('Invalid context selection')
+                selected = query.get('policy_version', [None])[0]
+                if selected is not None:
+                    from .policies import get_policy
+                    get_policy(selected)
+            except ValueError:
+                self._error(400, 'INVALID_POLICY_VERSION', '등록된 정책 버전을 하나 선택하세요.')
+                return
+            try:
+                context = build_context(selected) if selected is not None else build_context()
                 if self.server.store:
                     self.server.store.list_runs()  # Fail closed if the ledger was altered.
                     context['limits'] = [line for line in context['limits'] if not line.startswith('실행은 메모리에')]
                     context['limits'].append('로컬 합성 기록만 저장합니다. 암호화·인증·서명은 없으며 파일 소유자는 기록과 해시를 다시 쓸 수 있습니다. 검토 표시는 배포 승인이 아닙니다.')
-                self._send(200, {**context, 'csrf_token': self.server.csrf_token, 'storage': storage_info(self.server.store is not None)})
+                self._send(200, {**context, 'csrf_token': self.server.csrf_token, 'storage': {**storage_info(self.server.store is not None), 'request_scope': self.server.request_scope}})
             except StorageError:
                 self._storage_error(StorageError())
             except Exception:
                 self._error(500, 'CONTEXT_UNAVAILABLE', '규정 근거를 읽지 못했습니다. 로컬 프로젝트 파일을 확인하세요.')
-        elif self.path == '/api/runs' or self._run_path() is not None:
+        elif self.path in {'/api/runs', '/api/executions'} or self._run_path() is not None:
             if self.server.store is None:
                 self._error(503, 'STORAGE_DISABLED', '저장은 꺼져 있습니다. --workspace로 로컬 합성 기록을 활성화하세요.')
                 return
             try:
+                if self.path == '/api/executions':
+                    self._send(200, {'executions': self.server.store.list_attempts(), 'automatic_retry': False})
+                    return
                 result = ({'runs': self.server.store.list_runs(), 'storage': storage_info(True)}
                           if self.path == '/api/runs' else self.server.store.get(self._run_path()))
                 self._send(200, result)
@@ -122,6 +173,8 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
     def _storage_error(self, exc):
         if isinstance(exc, RunNotFound):
             self._error(404, 'RUN_NOT_FOUND', '저장된 실행을 찾지 못했습니다.')
+        elif isinstance(exc, ExecutionConflict):
+            self._error(409, 'EXECUTION_CONFLICT', 'This request is already recorded or has a different configuration. Inspect /api/executions; do not automatically retry with a new key.')
         elif isinstance(exc, StorageConflict):
             self._error(409, 'REVIEW_CONFLICT', '기록이 변경되었거나 해시가 일치하지 않습니다. 다시 불러오세요.')
         elif isinstance(exc, StorageLimit):
@@ -167,10 +220,13 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                     return
                 result = self.server.store.review(review_id, config)
             else:
-                result = execute_run(config)
-                if self.server.store is not None:
-                    record = self.server.store.save(result)
-                    result = {**result, 'record': record}
+                keys = self.headers.get_all('Idempotency-Key', [])
+                if len(keys) > 1: raise ValueError('Duplicate idempotency header')
+                if keys and self.server.store is None:
+                    self._error(409, 'IDEMPOTENCY_REQUIRES_STORAGE', 'Persistent workspace required')
+                    return
+                result = (execute_persisted(self.server.store, config, execute_run, request_key=keys[0] if keys else None)
+                          if self.server.store is not None else execute_run(config))
         except StorageError as exc:
             self._storage_error(exc)
         except (ValueError, UnicodeError):

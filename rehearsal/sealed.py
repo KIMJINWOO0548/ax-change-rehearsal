@@ -161,19 +161,26 @@ def _write_exact(stream, data):
 
 
 def _publish(destination, header, ciphertext):
-    """Publish a complete fsynced inode with atomic, non-overwriting link."""
+    """Publish the complete fsynced ciphertext without replacing an existing file."""
     fd, name = tempfile.mkstemp(prefix='.sealed-', dir=destination.parent)
     temporary = Path(name)
+    renamed = False
     try:
         with os.fdopen(fd, 'wb') as stream:
             _write_exact(stream, header)
             _write_exact(stream, ciphertext)
             stream.flush(); os.fsync(stream.fileno())
-        # os.link fails if destination exists, unlike replace/rename on POSIX.
-        os.link(temporary, destination, follow_symlinks=False)
+        if os.name == 'nt':
+            # Same directory and volume. Windows rename refuses an existing target.
+            os.rename(temporary, destination)
+            renamed = True
+        else:
+            # POSIX rename would overwrite an existing target; link will not.
+            os.link(temporary, destination, follow_symlinks=False)
     finally:
-        # This is our ciphertext-only staging file, never a supplied user file.
-        temporary.unlink()
+        # Do not unlink the old staging name after a successful rename.
+        if not renamed:
+            temporary.unlink()
     recovery._sync_directory(destination.parent)
 
 

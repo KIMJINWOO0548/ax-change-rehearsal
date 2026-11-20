@@ -4,13 +4,24 @@ Saved data is never interpreted as code, URLs, file names, or adapter selectors.
 A replay does not retry any external operation or change a review decision.
 """
 import copy
+import datetime as dt
 import re
 
-from .adapters import digest
+from .adapters import canonical, digest
 from .app import _validate_configuration, execute_run
+from .effects import EffectManifestMismatch
+from .storage import REPORT_ALLOWED, validate_report
 
 
 HASH = re.compile(r'[0-9a-f]{64}')
+
+
+def _same_evidence(left, right):
+    # Python considers True == 1 == 1.0. Exact JSON evidence must retain types.
+    try:
+        return canonical(left) == canonical(right)
+    except (TypeError, ValueError, RecursionError):
+        raise ValueError('Replay evidence is missing or inconsistent.') from None
 
 
 def replay_report(report):
@@ -21,15 +32,27 @@ The caller must separately verify the saved record's storage integrity.
 """
     if type(report) is not dict or report.get('synthetic_only') is not True:
         raise ValueError('Only registered synthetic reports can be replayed.')
+    # Identity/time are excluded from deterministic comparison, not optional.
+    # Attached review metadata is outside the report and conveys no approval.
+    incompatible_effects = False
+    try:
+        try:
+            validate_report({key: value for key, value in report.items() if key in REPORT_ALLOWED})
+        except EffectManifestMismatch:
+            incompatible_effects = True
+        if dt.datetime.fromisoformat(report['created_at']).tzinfo is None:
+            raise ValueError('Missing timestamp timezone')
+    except (ValueError, TypeError, RecursionError):
+        raise ValueError('Replay evidence is missing or inconsistent.') from None
     configuration = report.get('configuration')
     _validate_configuration(configuration)
     manifest = report.get('manifest')
     if (type(manifest) is not dict
             or not HASH.fullmatch(str(report.get('manifest_sha256', '')))
             or digest(manifest) != report['manifest_sha256']
-            or manifest.get('configuration') != configuration
+            or not _same_evidence(manifest.get('configuration'), configuration)
             or type(report.get('scope')) is not dict
-            or report['scope'] != manifest.get('scope')
+            or not _same_evidence(report['scope'], manifest.get('scope'))
             or type(report.get('cases')) is not list or not report['cases']
             or any(type(case) is not dict for case in report['cases'])
             or [case.get('id') for case in report['cases']] != report['scope'].get('selected_case_ids')):
@@ -41,12 +64,13 @@ The caller must separately verify the saved record's storage integrity.
               'synthetic_only': True, 'deployment_approval': False,
               'scope': fresh['scope'], 'counts': fresh['counts'],
               'readiness': fresh['readiness'], 'changed_sections': []}
-    if fresh['manifest'] != manifest:
+    if incompatible_effects or not _same_evidence(fresh['manifest'], manifest):
         return {**result, 'status': 'INCOMPATIBLE',
                 'reason': 'Source, policy, scenario, or FAQ evidence differs; review a new run.'}
     ignored = {'run_id', 'created_at', 'record'}
     changed = sorted(key for key in set(report) | set(fresh)
-                     if key not in ignored and report.get(key) != fresh.get(key))
+                     if key not in ignored and (key not in report or key not in fresh
+                        or not _same_evidence(report[key], fresh[key])))
     return {**result, 'status': 'DIFFERENT' if changed else 'MATCH', 'changed_sections': changed,
             'reason': 'Recorded evidence differs.' if changed else
             'Deterministic evidence matches within the recorded synthetic scope.'}

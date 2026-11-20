@@ -67,3 +67,36 @@ This is a narrow local synthetic pilot. Encryption protects only the explicitly 
 ### Reproducible CI runner scope (2026-11-08)
 
 The current CI matrix explicitly uses `ubuntu-24.04` and `windows-latest`, with all four CPython versions 3.10, 3.11, 3.12 and 3.13 on each runner (eight jobs). No test was removed, disabled or newly skipped for this runner selection. During release verification, the moving `ubuntu-latest` label selected Ubuntu 26.04.1; its official Python 3.10.22 download returned HTTP 504 through the setup action retries and one failed-job rerun, before application tests could execute. The official same-release Ubuntu 24.04 x64 asset was confirmed present. Linux CI is pinned to Ubuntu 24.04 for a reproducible test target; this is an infrastructure/environment selection, not an application defect fix or a claim of Ubuntu 26.04 support. Exact-commit CI results remain the release gate.
+
+
+## Review workspace UI increment (2026-11-08)
+
+This increment preserves the existing local synthetic workbench, backend contracts,
+and the separation between current results and historical evidence.
+
+- Added a current-work overview showing selected scope, FAQ/API versions, storage mode,
+  and explicit ready, running, stale, empty, failed, inconclusive and partial states.
+- Added keyboard-operable priority entry to the first failed or inconclusive case.
+  It changes the result filter, not the selected execution scope.
+- Added review-status filtering, dated archive entries, Korean evidence summaries,
+  and a readable review timeline. Full identifiers and hash chains remain expandable.
+  Review marks still explicitly do not imply identity, approval or deployment permission.
+- Improved Korean wrapping, mobile navigation and 44px mobile control targets.
+  Wide result tables retain keyboard-scrollable regions; priority review avoids needing
+  to horizontally scroll before opening the most relevant evidence.
+
+Validation performed on the final integrated v0.7 base: Python 170 tests, frontend
+32 tests, package checks (3 synthetic packs / 36 cases), demo/report regeneration,
+JavaScript syntax, compilation and whitespace checks. Shared Chrome was used for
+before/after inspection and local interactions. The isolated Chromium regression
+covers the complete previous workbench/archive flows, keyboard focus, priority review,
+filters, draft retention, revision conflicts, uncertain writes, malformed responses,
+and responsive layouts at 1440/1488px desktop and 390/320px mobile.
+The separate plaintext-recovery and encrypted-copy-recovery browser suites also
+passed all seven groups each. Their UI checks explicitly expand identifiers and
+event hashes before comparing source and restored evidence.
+
+Screenshots and runtime logs are kept outside the public source tree. No real customer
+or production system was used. No screen-reader session, Firefox/Safari run, real mobile
+device test or full WCAG conformance audit was performed. Passing these checks is not
+an enterprise deployment certification.

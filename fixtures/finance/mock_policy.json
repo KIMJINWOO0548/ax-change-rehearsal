@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "effective_date": "2026-12-01",
+  "region": "KR",
+  "baseline_threshold": 500000,
+  "candidate_threshold": 300000,
+  "customer_type": "personal",
+  "product_id": "P1",
+  "waive_if_true": "vip"
+}

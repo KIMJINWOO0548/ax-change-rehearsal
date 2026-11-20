@@ -78,5 +78,33 @@
       faqImproved: rows.filter(r => r.faqImproved).length, apiImproved: rows.filter(r => r.apiImproved).length,
       faqRegressed: rows.filter(r=>r.faqRegressed).length, apiRegressed: rows.filter(r=>r.apiRegressed).length};
   }
-  return {compareRuns, orderedSelection, validSelection};
+  function crosscheckText(check) {
+    if (!check) return '교차 근거 미기록';
+    const states = {ALIGNED:'동일 조건에서 판단 일치', DIVERGENT:'동일 조건에서 판단 불일치',
+      CONTEXT_MISMATCH:'입력 조건이 달라 비교할 수 없음', UNOBSERVED:'입력 또는 응답 미확인'};
+    if (check.version !== 1 || !Object.hasOwn(states, check.state)) return '교차 근거 확인 불가';
+    const fields = {order_id:'주문 식별자', region:'적용 지역', delivered_on:'배송일',
+      elapsed_days:'경과 일수', opened:'개봉 여부', custom_made:'맞춤 제작 여부'};
+    const differences = check.state === 'CONTEXT_MISMATCH' && Array.isArray(check.changed_fields)
+      ? check.changed_fields.filter(field => Object.hasOwn(fields, field)).map(field => fields[field]) : [];
+    return states[check.state] + (differences.length ? ' · ' + differences.join(', ') : '');
+  }
+  const intentRoles = {REVIEWER:'검토자', CUSTOMER:'고객'};
+  const intentFindings = {MISSING:'누락', DUPLICATE:'중복', WRONG_ROLE:'역할 불일치', UNEXPECTED_EFFECT:'예상 밖 의도',
+    PREEXISTING_CHANGED:'기존 의도 변경', REPLAY_CHANGED:'재호출 후 의도 변경', UNCONFIRMED:'관찰 미확인'};
+  function effectsText(effect) {
+    if (!effect) return '효과 근거 미기록';
+    const value = (counts,role) => Number.isSafeInteger(counts?.[role]) && counts[role]>=0 ? counts[role]+'건' : '확인 불가';
+    const lines = Object.entries(intentRoles).map(([role,label]) =>
+      `${label} 기대 ${value(effect.expectations,role)} · 최초 ${value(effect.changes?.first,role)} · 재호출 ${value(effect.changes?.replay,role)}`);
+    const findings = Array.isArray(effect.findings) ? effect.findings.map(item=>intentFindings[item]??'판정 확인 불가') : ['판정 확인 불가'];
+    return lines.join(' / ') + (findings.length ? ' · '+findings.join(' · ') : '');
+  }
+  function intentCheckpointText(observation) {
+    if (!observation) return '';
+    if (observation.state!=='OBSERVED' || !Array.isArray(observation.rows)) return ' · 알림 의도 확인 불가';
+    const roles=Object.entries(intentRoles).map(([role,label])=>`${label} ${observation.rows.filter(row=>row.role===role).length}건`);
+    return ' · 관찰한 모의 알림 의도 '+roles.join(', ');
+  }
+  return {compareRuns, orderedSelection, validSelection, crosscheckText, effectsText, intentCheckpointText};
 });

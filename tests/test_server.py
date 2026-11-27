@@ -7,6 +7,36 @@ import unittest
 from unittest.mock import patch
 
 
+class DesktopSessionTests(unittest.TestCase):
+    def test_desktop_opens_workbench_only_for_matching_session(self):
+        from rehearsal.server import make_server
+
+        session = 'A' * 64
+        with make_server(0, desktop_session=session) as server:
+            worker = threading.Thread(target=server.serve_forever)
+            worker.start()
+            try:
+                for path in ('/', '/api/context', '/app.js'):
+                    for value in (None, 'B' * 64, 'é' * 64, session):
+                        headers = {} if value is None else {'X-AX-Desktop': value}
+                        with self.subTest(path=path, session_matches=value == session):
+                            conn = http.client.HTTPConnection('127.0.0.1', server.server_port, timeout=4)
+                            try:
+                                conn.request('GET', path, headers=headers)
+                                response = conn.getresponse()
+                                body = response.read()
+                                self.assertEqual(response.status, 200 if value == session else 403)
+                                if path == '/' and value == session:
+                                    self.assertIn(b'<body data-desktop>', body)
+                                else:
+                                    self.assertNotIn(b'<body data-desktop>', body)
+                            finally:
+                                conn.close()
+            finally:
+                server.shutdown()
+                worker.join(timeout=4)
+
+
 class ServerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

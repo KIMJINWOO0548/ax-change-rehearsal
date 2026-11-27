@@ -24,3 +24,5 @@ VALIDATION_RESULT.json
 # Sealed copies still contain private business evidence.
 *.axsealed
 .sealed-*
+desktop/**/bin/
+desktop/**/obj/

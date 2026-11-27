@@ -58,7 +58,8 @@ def execute_persisted(store, configuration, runner, *, request_key=None):
 class WorkbenchServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, port, workspace=None):
+    def __init__(self, port, workspace=None, desktop_session=None):
+        self.desktop_session = desktop_session
         self.store = EvidenceStore(workspace) if workspace is not None else None
         self.request_scope = (hashlib.sha256(os.path.normcase(str(self.store.workspace.resolve())).encode('utf-8')).hexdigest()
                               if self.store is not None else None)
@@ -104,6 +105,12 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
         if len(hosts) != 1 or hosts[0].lower() not in allowed:
             self._error(403, 'UNTRUSTED_HOST', '이 작업대의 로컬 주소로 접속해야 합니다.')
             return False
+        if self.server.desktop_session is not None:
+            sessions = self.headers.get_all('X-AX-Desktop', [])
+            if (len(sessions) != 1 or not re.fullmatch('[0-9A-F]{64}', sessions[0])
+                    or not secrets.compare_digest(sessions[0], self.server.desktop_session)):
+                self._error(403, 'DESKTOP_SESSION_REQUIRED', 'Windows 앱에서 이 작업대를 여세요.')
+                return False
         origins = self.headers.get_all('Origin', [])
         if origins and (len(origins) != 1 or origins[0] != 'http://' + hosts[0].lower()):
             self._error(403, 'UNTRUSTED_ORIGIN', '다른 사이트에서 보낸 요청을 차단했습니다.')
@@ -159,7 +166,10 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
         elif self.path in ASSETS:
             name, content_type = ASSETS[self.path]
             try:
-                self._send(200, (ROOT / 'web' / name).read_bytes(), content_type)
+                content = (ROOT / 'web' / name).read_bytes()
+                if name == 'index.html' and self.server.desktop_session is not None:
+                    content = content.replace(b'<body>', b'<body data-desktop>', 1)
+                self._send(200, content, content_type)
             except OSError:
                 self._error(503, 'ASSET_UNAVAILABLE', '화면 파일을 읽지 못했습니다.')
         else:
@@ -242,7 +252,7 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
         self._error(405, 'METHOD_NOT_ALLOWED', '지원하지 않는 요청 방식입니다.')
 
 
-def make_server(port=8765, workspace=None):
+def make_server(port=8765, workspace=None, *, desktop_session=None):
     if type(port) is not int or not 0 <= port <= 65535:
         raise ValueError('Invalid port')
-    return WorkbenchServer(port, workspace)
+    return WorkbenchServer(port, workspace, desktop_session)

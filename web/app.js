@@ -363,12 +363,14 @@
       validateResult(result,config);acknowledgeRequest(pending);state.result=result;state.stale=false;
       archive?.afterRun(result);
       state.history=[result,...state.history.filter(r=>r.run_id!==result.run_id)].slice(0,8);renderResult();
+      if(document.body.hasAttribute('data-desktop'))$('results-title').focus();
     } catch(error) {
       if(token===state.request){
         state.error=true;archive?.refreshExecutions();
         status('실행 완료 여부를 확인하지 못했습니다. '+error.message+
           (state.context?.storage?.enabled?' 저장된 실행 기록을 확인하세요.':'')+
           (state.result?' 아래는 이전 실행 결과이며 현재 결과가 아닙니다.':''),'error');
+        if(document.body.hasAttribute('data-desktop'))$('run-status').focus();
       }
     } finally {if(token===state.request){state.busy=false;availability();}}
   }
@@ -405,8 +407,18 @@
   });
   $('policy-version').addEventListener('change',loadContext);
   $('reload').addEventListener('click',loadContext);
-  document.querySelectorAll('.rail nav a').forEach(link=>link.addEventListener('click',()=>{
-    document.querySelectorAll('.rail nav a').forEach(item=>item.removeAttribute('aria-current'));link.setAttribute('aria-current','location');
-  }));
-  document.querySelector('.rail nav a').setAttribute('aria-current','location');loadContext();
+  const stages=Array.from(document.querySelectorAll('.rail nav a'));
+  function setCurrentStage(href){
+    for(const link of stages) {
+      if(link.getAttribute('href')===href)link.setAttribute('aria-current','location');
+      else link.removeAttribute('aria-current');
+    }
+  }
+  for(const link of stages)link.addEventListener('click',()=>setCurrentStage(link.getAttribute('href')));
+  $('main').addEventListener('focusin',event=>{
+    const section=event.target.closest('main > section[id]');
+    if(section)setCurrentStage('#'+section.id);
+  });
+  setCurrentStage(stages.find(link=>link.getAttribute('href')===location.hash)?.getAttribute('href')||stages[0].getAttribute('href'));
+  loadContext();
 })();
